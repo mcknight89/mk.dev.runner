@@ -2,34 +2,56 @@ using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Windows.Input;
 
-namespace mk.dev.runner.desktop.ViewModels;
-
-public abstract class Observable : INotifyPropertyChanged
+namespace mk.dev.runner.desktop.ViewModels
 {
-    public event PropertyChangedEventHandler? PropertyChanged;
-
-    protected bool Set<T>(ref T field, T value, [CallerMemberName] string? name = null)
+    public abstract class Observable : INotifyPropertyChanged
     {
-        if (EqualityComparer<T>.Default.Equals(field, value)) return false;
-        field = value;
-        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
-        return true;
+        public event PropertyChangedEventHandler? PropertyChanged;
+
+        protected bool Set<T>(ref T field, T value, [CallerMemberName] string? name = null)
+        {
+            if (EqualityComparer<T>.Default.Equals(field, value))
+                return false;
+            field = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+            return true;
+        }
+
+        protected void Raise([CallerMemberName] string? name = null)
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+        }
     }
 
-    protected void Raise([CallerMemberName] string? name = null) =>
-        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
-}
-
-public sealed class Command(Action<object?> run, Func<object?, bool>? can = null) : ICommand
-{
-    public Command(Action run, Func<bool>? can = null) : this(_ => run(), can == null ? null : _ => can()) { }
-
-    public event EventHandler? CanExecuteChanged
+    public sealed class Command : ICommand
     {
-        add => CommandManager.RequerySuggested += value;
-        remove => CommandManager.RequerySuggested -= value;
-    }
+        private readonly Action<object?> _run;
+        private readonly Func<object?, bool>? _can;
 
-    public bool CanExecute(object? p) => can?.Invoke(p) ?? true;
-    public void Execute(object? p) => run(p);
+        public Command(Action<object?> run, Func<object?, bool>? can = null)
+        {
+            _run = run;
+            _can = can;
+        }
+
+        public Command(Action run, Func<bool>? can = null) : this(_ => run(), can == null ? null : _ => can())
+        {
+        }
+
+        public event EventHandler? CanExecuteChanged
+        {
+            add => CommandManager.RequerySuggested += value;
+            remove => CommandManager.RequerySuggested -= value;
+        }
+
+        public bool CanExecute(object? p)
+        {
+            return _can?.Invoke(p) ?? true;
+        }
+
+        public void Execute(object? p)
+        {
+            _run(p);
+        }
+    }
 }
