@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -29,7 +28,7 @@ namespace mk.dev.runner.desktop.ViewModels
             });
             Restart = new Command(() => _runner.RestartService(S.Index), () => S.HasProcess || S.IsBusy);
             OpenUrl = new Command(() => { if (_runner.UrlOf(S) is { } u) Shell.Open(u); }, () => _runner.UrlOf(S) != null);
-            OpenLog = new Command(() => Shell.OpenInEditor(_runner.LogFileOf(S)));
+            OpenLog = new Command(() => new Views.LogFileWindow($"{S.Name} log", _runner.LogFileOf(S)).Show());
             OpenFolder = new Command(() => Shell.Open(_runner.Project.ServiceDir(S.Config)));
             Refresh();
         }
@@ -110,7 +109,12 @@ namespace mk.dev.runner.desktop.ViewModels
             IsBusy = S.IsBusy;
             IsActive = S.HasProcess || S.IsBusy;
             var en = _runner.IsEnabled(S);
-            if (_enabled != en) { _enabled = en; Raise(nameof(Enabled)); Raise(nameof(EnabledText)); }
+            if (_enabled != en)
+            {
+                _enabled = en;
+                Raise(nameof(Enabled));
+                Raise(nameof(EnabledText));
+            }
             (StateText, StateBrush) = S.State switch
             {
                 ServiceState.Running when S.NoReadyLine => ("Running? (no ready line)", Palette.Brush(Palette.Warn)),
@@ -159,7 +163,13 @@ namespace mk.dev.runner.desktop.ViewModels
             _historyVersion = S.HistoryVersion;
             var h = S.MemoryHistory();
             const double W = 120, H = 28;
-            if (h.Length < 2) { if (Sparkline.Count > 0) Sparkline = []; PeakText = ""; return; }
+            if (h.Length < 2)
+            {
+                if (Sparkline.Count > 0)
+                    Sparkline = [];
+                PeakText = "";
+                return;
+            }
             var max = Math.Max(h.Max(), 1);
             var min = h.Min();
             var range = Math.Max(max - min, max * 0.1);

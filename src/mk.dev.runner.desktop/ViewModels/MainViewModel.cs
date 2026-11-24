@@ -1,7 +1,5 @@
-using System.Collections.ObjectModel;
 using System.Windows;
 using System.Windows.Threading;
-using Microsoft.Win32;
 using mk.dev.runner.core;
 
 namespace mk.dev.runner.desktop.ViewModels
@@ -15,8 +13,9 @@ namespace mk.dev.runner.desktop.ViewModels
         {
             Settings = AppSettings.Load();
             if (Settings.LoadProblem is { } problem)
-                Application.Current?.Dispatcher.BeginInvoke(() => MessageBox.Show(problem, "Dev runner settings", MessageBoxButton.OK, MessageBoxImage.Warning));
-            foreach (var lp in Settings.LoadProjects()) Projects.Add(new ProjectViewModel(this, lp));
+                Application.Current?.Dispatcher.BeginInvoke(() => Views.ChoiceWindow.Problem("Your settings couldn't be read", problem));
+            foreach (var lp in Settings.LoadProjects())
+                Projects.Add(new ProjectViewModel(this, lp));
             Selected = Projects.FirstOrDefault();
 
             AddProject = new Command(DoAddProject);
@@ -28,9 +27,9 @@ namespace mk.dev.runner.desktop.ViewModels
             InstallUpdate = new Command(async () =>
             {
                 var running = Projects.Sum(p => p.Services.Count(s => s.IsActive));
-                if (running > 0 && MessageBox.Show(Application.Current?.MainWindow!,
-                        $"Updating restarts Dev Runner and stops the {running} running service{(running == 1 ? "" : "s")}. They stay stopped afterwards.\n\nUpdate to {Updates.Available} now?",
-                        "Update Dev Runner", MessageBoxButton.OKCancel, MessageBoxImage.Question) != MessageBoxResult.OK) return;
+                if (running > 0 && !Views.ChoiceWindow.Confirm($"Update to {Updates.Available}?",
+                        $"Dev Runner restarts and stops the {running} running service{(running == 1 ? "" : "s")}. They stay stopped afterwards.", "Update"))
+                    return;
                 await Updates.InstallAsync(() => Task.Run(StopEverything));
             }, () => Updates.HasUpdate && !Updates.Busy);
 
@@ -48,7 +47,8 @@ namespace mk.dev.runner.desktop.ViewModels
             _tick++;
             if (!WindowVisible && _tick % 4 != 0)
                 return;
-            foreach (var p in Projects) p.Refresh(WindowVisible && p == Selected);
+            foreach (var p in Projects)
+                p.Refresh(WindowVisible && p == Selected);
             if (_tick % 4 == 0)
             {
                 var active = Projects.Where(p => p.IsActive).ToList();
@@ -80,13 +80,20 @@ namespace mk.dev.runner.desktop.ViewModels
 
         public void SaveSettings()
         {
-            try { Settings.Save(); }
-            catch (Exception e) { MessageBox.Show(e.Message, "Couldn't save settings"); }
+            try
+            {
+                Settings.Save();
+            }
+            catch (Exception e)
+            {
+                Views.ChoiceWindow.Problem("Your settings couldn't be saved", e.Message);
+            }
         }
 
         public void AutoStartProjects()
         {
-            foreach (var p in Projects.Where(p => p.Entry.AutoStart && p.Runner != null)) p.StartAll.Execute(null);
+            foreach (var p in Projects.Where(p => p.Entry.AutoStart && p.Runner != null))
+                p.StartAll.Execute(null);
         }
 
         public void OpenEnvEditor(ProjectViewModel p)
@@ -101,7 +108,11 @@ namespace mk.dev.runner.desktop.ViewModels
         {
             Parallel.ForEach(Projects.Where(p => p.Runner?.SessionActive == true).ToList(), p =>
             {
-                try { p.Runner!.StopAll(); } catch { }
+                try
+                {
+                    p.Runner!.StopAll();
+                }
+                catch { }
             });
         }
 
@@ -109,7 +120,8 @@ namespace mk.dev.runner.desktop.ViewModels
         {
             _timer.Stop();
             _settingsWatcher?.Dispose();
-            foreach (var p in Projects) p.Dispose();
+            foreach (var p in Projects)
+                p.Dispose();
         }
     }
 }

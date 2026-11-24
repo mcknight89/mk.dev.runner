@@ -1,7 +1,6 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
-using System.Text;
 using Microsoft.Win32.SafeHandles;
 
 namespace mk.dev.runner.core.Native
@@ -24,7 +23,10 @@ namespace mk.dev.runner.core.Native
 
         public bool TryAssign(Process p)
         {
-            try { return Win32.AssignProcessToJobObject(_h, p.SafeHandle); }
+            try
+            {
+                return Win32.AssignProcessToJobObject(_h, p.SafeHandle);
+            }
             catch { return false; }
         }
 
@@ -47,7 +49,8 @@ namespace mk.dev.runner.core.Native
                     return [];
                 var n = Math.Min(Marshal.ReadInt32(buf, 4), max);
                 var ids = new int[n];
-                for (int i = 0; i < n; i++) ids[i] = (int)Marshal.ReadIntPtr(buf, 8 + i * IntPtr.Size);
+                for (int i = 0; i < n; i++)
+                    ids[i] = (int)Marshal.ReadIntPtr(buf, 8 + i * IntPtr.Size);
                 return ids;
             }
             finally { Marshal.FreeHGlobal(buf); }

@@ -1,11 +1,3 @@
-using System.Diagnostics;
-using System.Text;
-using System.Text.RegularExpressions;
-using mk.dev.runner.core.Config;
-using mk.dev.runner.core.Logs;
-using mk.dev.runner.core.Native;
-using mk.dev.runner.core.Runtime;
-
 namespace mk.dev.runner.core
 {
     public sealed partial class ProjectRunner
@@ -26,7 +18,8 @@ namespace mk.dev.runner.core
                         NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.Size,
                     };
                     FileSystemEventHandler h = (_, _) => _q.Post(OnEnvFileChanged);
-                    w.Changed += h; w.Created += h;
+                    w.Changed += h;
+                    w.Created += h;
                     w.Renamed += (_, _) => _q.Post(OnEnvFileChanged);
                     w.EnableRaisingEvents = true;
                     _envWatchers.Add(w);
@@ -40,9 +33,11 @@ namespace mk.dev.runner.core
 
         private void StopEnvWatchers()
         {
-            _envDebounce?.Dispose(); _envDebounce = null;
+            _envDebounce?.Dispose();
+            _envDebounce = null;
             _envChangedAt = null;
-            foreach (var w in _envWatchers) w.Dispose();
+            foreach (var w in _envWatchers)
+                w.Dispose();
             _envWatchers.Clear();
         }
 
@@ -62,12 +57,13 @@ namespace mk.dev.runner.core
                     if (s.IsBusy || s.StartedAt > changedAt.AddSeconds(-1))
                         continue;
                     s.Logs.Add("\x1b[33m[runner] .env changed — restarting…\x1b[0m");
-                    if (IsManaged) { managed.Add(s.Index); s.State = ServiceState.Building; }
+                    if (IsManaged)
+                        managed.Add(s.Index);
                     else
                         RestartCore(s);
                 }
                 if (managed.Count > 0)
-                    TriggerBuild(managed, false);
+                    QueueBuild(managed, false);
             });
         }
     }

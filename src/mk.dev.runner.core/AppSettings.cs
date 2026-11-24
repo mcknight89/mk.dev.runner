@@ -14,14 +14,19 @@ namespace mk.dev.runner.core
 
         public bool TrayHintShown { get; set; }
 
+        public WindowLayout? Window { get; set; }
+
         public string? UpdateChannel { get; set; }
+
+        public string? LastVersion { get; set; }
 
         public bool CheckForUpdates { get; set; } = true;
 
         public static string Dir => AppPaths.SettingsDir;
         public static string FilePath => Path.Combine(Dir, "settings.json");
 
-        [System.Text.Json.Serialization.JsonIgnore] public string? LoadProblem { get; private set; }
+        [System.Text.Json.Serialization.JsonIgnore]
+        public string? LoadProblem { get; private set; }
 
         private bool _unreadable;
 
@@ -30,7 +35,10 @@ namespace mk.dev.runner.core
             if (!File.Exists(FilePath))
                 return new();
             string text;
-            try { text = ReadWithRetry(); }
+            try
+            {
+                text = ReadWithRetry();
+            }
             catch (Exception e) { return new() { LoadProblem = $"Couldn't read {FilePath}: {e.Message}", _unreadable = true }; }
             try
             {
@@ -41,11 +49,21 @@ namespace mk.dev.runner.core
             catch (Exception e)
             {
                 if (!moveBroken)
-                    return new() { LoadProblem = $"settings.json couldn't be read ({e.Message})", _unreadable = true };
+                    return new()
+                    {
+                        LoadProblem = $"settings.json couldn't be read ({e.Message})",
+                        _unreadable = true
+                    };
                 var aside = Path.Combine(Dir, $"settings.broken-{DateTime.Now:yyyyMMdd-HHmmss}.json");
-                try { File.Move(FilePath, aside); }
+                try
+                {
+                    File.Move(FilePath, aside);
+                }
                 catch { aside = FilePath + " (left in place)"; }
-                return new() { LoadProblem = $"settings.json couldn't be read ({e.Message}). It was kept as {aside}; the project list starts empty." };
+                return new()
+                {
+                    LoadProblem = $"settings.json couldn't be read ({e.Message}). It was kept as {aside}; the project list starts empty."
+                };
             }
         }
 
@@ -53,7 +71,10 @@ namespace mk.dev.runner.core
         {
             for (var i = 0; ; i++)
             {
-                try { return File.ReadAllText(FilePath); }
+                try
+                {
+                    return File.ReadAllText(FilePath);
+                }
                 catch (IOException) when (i < 4) { Thread.Sleep(200); }
             }
         }
@@ -72,7 +93,10 @@ namespace mk.dev.runner.core
 
         public static LoadedProject LoadOne(ProjectEntry e)
         {
-            try { return new LoadedProject(e, Project.Load(e.ConfigFile, e.Name), null); }
+            try
+            {
+                return new LoadedProject(e, Project.Load(e.ConfigFile, e.Name), null);
+            }
             catch (Exception ex) { return new LoadedProject(e, null, ex.Message); }
         }
 
@@ -140,7 +164,11 @@ namespace mk.dev.runner.core
             var files = dirs.SelectMany(d =>
             {
                 var found = Project.FindConfigs(d);
-                if (found.Count > 1 && d != dir) { errors.Add($"{d}: more than one config ({string.Join(", ", found.Select(Path.GetFileName))}), add the one you want"); return []; }
+                if (found.Count > 1 && d != dir)
+                {
+                    errors.Add($"{d}: more than one config ({string.Join(", ", found.Select(Path.GetFileName))}), add the one you want");
+                    return [];
+                }
                 return found;
             });
             foreach (var f in files.OrderBy(f => f, StringComparer.OrdinalIgnoreCase))
@@ -164,7 +192,11 @@ namespace mk.dev.runner.core
 
         private static string? SafeFull(string p)
         {
-            try { return Path.GetFullPath(p); } catch { return null; }
+            try
+            {
+                return Path.GetFullPath(p);
+            }
+            catch { return null; }
         }
     }
 }

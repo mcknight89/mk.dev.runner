@@ -1,10 +1,4 @@
-using System.Diagnostics;
-using System.Text;
-using System.Text.RegularExpressions;
-using mk.dev.runner.core.Config;
-using mk.dev.runner.core.Logs;
 using mk.dev.runner.core.Native;
-using mk.dev.runner.core.Runtime;
 
 namespace mk.dev.runner.core
 {
@@ -26,7 +20,11 @@ namespace mk.dev.runner.core
             if (!SessionActive)
                 return;
             List<(int Pid, int Port)> listeners;
-            try { listeners = TcpListeners.All(); } catch { listeners = []; }
+            try
+            {
+                listeners = TcpListeners.All();
+            }
+            catch { listeners = []; }
             var now = DateTime.Now;
             var cores = Environment.ProcessorCount;
 
@@ -41,7 +39,14 @@ namespace mk.dev.runner.core
                 int[] pids;
                 if (sp.InJob)
                     pids = sp.Job.ProcessIds();
-                else { try { pids = [sp.P.Id]; } catch { pids = []; } }
+                else
+                {
+                    try
+                    {
+                        pids = [sp.P.Id];
+                    }
+                    catch { pids = []; }
+                }
 
                 var samples = new List<ProcessSample>(pids.Length);
                 foreach (var pid in pids)

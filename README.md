@@ -59,3 +59,7 @@ Everything in a dev.mjs config still works. These are new and optional:
 - `"url"` for the browser button, e.g. `"http://localhost:{port}/swagger"`
 - `"restartOnChange": [".env"]` in globals: files that restart the dotnet services when they change
 - `"root"` if the services aren't under the config's folder
+
+## Licence
+
+MIT, see [LICENSE](LICENSE).

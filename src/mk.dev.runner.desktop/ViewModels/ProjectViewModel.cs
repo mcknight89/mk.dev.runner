@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Windows;
 using System.Windows.Media;
 using mk.dev.runner.core;
+using mk.dev.runner.core.Config;
 
 namespace mk.dev.runner.desktop.ViewModels
 {
@@ -34,7 +35,7 @@ namespace mk.dev.runner.desktop.ViewModels
                 Directory.CreateDirectory(Runner.Project.LogsDir);
                 Shell.Open(Runner.Project.LogsDir);
             });
-            ViewBuildLog = new Command(() => { if (Runner is { } r) Shell.OpenInEditor(r.BuildLogFile); },
+            ViewBuildLog = new Command(() => { if (Runner is { } r) new Views.LogFileWindow($"{Name} build log", r.BuildLogFile).Show(); },
                                        () => Runner?.IsManaged == true);
             Rename = new Command(DoRename);
             EditProject = new Command(DoEditProject, () => Runner != null && !Runner.SessionActive);
@@ -57,14 +58,22 @@ namespace mk.dev.runner.desktop.ViewModels
         public LogSourceViewModel? SelectedLog
         {
             get => _selectedLog;
-            set { if (Set(ref _selectedLog, value)) value?.Pull(); }
+            set
+            {
+                if (Set(ref _selectedLog, value))
+                    value?.Pull();
+            }
         }
 
         private ServiceViewModel? _selectedService;
         public ServiceViewModel? SelectedService
         {
             get => _selectedService;
-            set { if (Set(ref _selectedService, value) && value != null) SelectedLog = value.Log; }
+            set
+            {
+                if (Set(ref _selectedService, value) && value != null)
+                    SelectedLog = value.Log;
+            }
         }
 
         public Command StartAll { get; }
@@ -85,17 +94,24 @@ namespace mk.dev.runner.desktop.ViewModels
 
         public bool IsManaged => Runner?.IsManaged == true;
         public string ConfigPath => Runner?.Project.ConfigPath ?? Entry.ConfigFile;
-        public string ModeText => Runner == null ? "" : Runner.Project.Config.Globals.DotnetMode switch
+        public string ModeText => Runner == null ? "" : Runner.Project.Config.Globals.Mode switch
         {
-            "managed" => "dotnet: managed builds",
-            "run" => "dotnet: run",
+            DotnetMode.Managed => "dotnet: managed builds",
+            DotnetMode.Run => "dotnet: run",
             _ => "dotnet: watch",
         };
 
         public bool AutoStart
         {
             get => Entry.AutoStart;
-            set { if (Entry.AutoStart == value) return; Entry.AutoStart = value; Raise(); _main.SaveSettings(); }
+            set
+            {
+                if (Entry.AutoStart == value)
+                    return;
+                Entry.AutoStart = value;
+                Raise();
+                _main.SaveSettings();
+            }
         }
 
         private bool _busy;
@@ -150,7 +166,8 @@ namespace mk.dev.runner.desktop.ViewModels
             r.ServicesChanged += () => Application.Current.Dispatcher.BeginInvoke(BuildServices);
             Runner = r;
             BuildLog = new LogSourceViewModel("Build", () => r.BuildLog, "#c084fc");
-            Raise(nameof(Runner)); Raise(nameof(ConfigPath));
+            Raise(nameof(Runner));
+            Raise(nameof(ConfigPath));
         }
 
         private void Reattach()
@@ -159,8 +176,14 @@ namespace mk.dev.runner.desktop.ViewModels
             Runner = null;
             var lp = AppSettings.LoadOne(Entry);
             Error = lp.Error;
-            if (lp.Project is { } p) { Attach(p); Name = p.Name; }
-            Raise(nameof(Name)); Raise(nameof(Error)); Raise(nameof(HasError));
+            if (lp.Project is { } p)
+            {
+                Attach(p);
+                Name = p.Name;
+            }
+            Raise(nameof(Name));
+            Raise(nameof(Error));
+            Raise(nameof(HasError));
             BuildServices();
         }
 
@@ -172,7 +195,8 @@ namespace mk.dev.runner.desktop.ViewModels
                 StatusBrush = Palette.Brush(Palette.Bad);
                 return;
             }
-            foreach (var s in Services) s.Refresh();
+            foreach (var s in Services)
+                s.Refresh();
             if (pullLogs)
                 SelectedLog?.Pull();
 
@@ -183,10 +207,26 @@ namespace mk.dev.runner.desktop.ViewModels
             var mem = Runner.TotalWorkingSet;
             MemoryText = mem > 0 ? Format.Bytes(mem) : "";
 
-            if (!Runner.SessionActive) { StatusText = $"{Services.Count} service{(Services.Count == 1 ? "" : "s")} · stopped"; StatusBrush = Palette.Brush(Palette.Off); }
-            else if (HasProblem) { StatusText = $"{running}/{total} running · problem"; StatusBrush = Palette.Brush(Palette.Bad); }
-            else if (busy) { StatusText = $"{running}/{total} running · starting"; StatusBrush = Palette.Brush(Palette.Info); }
-            else { StatusText = $"{running}/{total} running"; StatusBrush = Palette.Brush(running > 0 ? Palette.Good : Palette.Off); }
+            if (!Runner.SessionActive)
+            {
+                StatusText = $"{Services.Count} service{(Services.Count == 1 ? "" : "s")} · stopped";
+                StatusBrush = Palette.Brush(Palette.Off);
+            }
+            else if (HasProblem)
+            {
+                StatusText = $"{running}/{total} running · problem";
+                StatusBrush = Palette.Brush(Palette.Bad);
+            }
+            else if (busy)
+            {
+                StatusText = $"{running}/{total} running · starting";
+                StatusBrush = Palette.Brush(Palette.Info);
+            }
+            else
+            {
+                StatusText = $"{running}/{total} running";
+                StatusBrush = Palette.Brush(running > 0 ? Palette.Good : Palette.Off);
+            }
 
             BuildText = Runner.IsManaged ? Runner.BuildState switch
             {

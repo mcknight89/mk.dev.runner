@@ -1,3 +1,4 @@
+using mk.dev.runner.core.Config;
 using mk.dev.runner.core;
 using Xunit;
 
@@ -16,15 +17,15 @@ namespace mk.dev.runner.tests
         [MemberData(nameof(ArgSets))]
         public void JoinThenSplitGivesTheSameArgs(string[] args)
         {
-            var line = Project.JoinArgs(args);
+            var line = CommandArgs.Join(args);
 
-            Assert.Equal(args, Project.SplitArgs(line));
+            Assert.Equal(args, CommandArgs.Split(line));
         }
 
         [Fact]
         public void SplitKeepsQuotedSpaces()
         {
-            Assert.Equal(["run", "my app", "--fast"], Project.SplitArgs("run \"my app\" --fast"));
+            Assert.Equal(["run", "my app", "--fast"], CommandArgs.Split("run \"my app\" --fast"));
         }
     }
 }

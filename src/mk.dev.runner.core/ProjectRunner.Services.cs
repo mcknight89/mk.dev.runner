@@ -43,7 +43,10 @@ namespace mk.dev.runner.core
             }
 
             string line;
-            try { line = CommandLine(s, port); }
+            try
+            {
+                line = CommandLine(s, port);
+            }
             catch (Exception e)
             {
                 s.State = ServiceState.Crashed;
@@ -51,31 +54,23 @@ namespace mk.dev.runner.core
                 return;
             }
 
-            var psi = new ProcessStartInfo("cmd.exe")
-            {
-                Arguments = $"/d /s /c \"{line}\"",
-                WorkingDirectory = dir,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardInput = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                StandardOutputEncoding = Encoding.UTF8,
-                StandardErrorEncoding = Encoding.UTF8,
-            };
+            var psi = CmdProcess.Info(line, dir);
             psi.Environment["FORCE_COLOR"] = "1";
             psi.Environment["DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION"] = "1";
             if (s.Config.IsDotnet)
             {
-                foreach (var (k, v) in DotnetNoServers) psi.Environment[k] = v;
-                if (port is > 0 && !IsManaged) psi.Environment["ASPNETCORE_URLS"] = $"http://localhost:{port}";
+                foreach (var (k, v) in DotnetNoServers)
+                    psi.Environment[k] = v;
+                if (port is > 0 && !IsManaged)
+                    psi.Environment["ASPNETCORE_URLS"] = $"http://localhost:{port}";
                 psi.Environment["ASPNETCORE_ENVIRONMENT"] = "Development";
             }
             else if (port is > 0)
                 psi.Environment["PORT"] = port.ToString();
 
             var userEnv = UserEnv(s);
-            foreach (var (k, v) in userEnv) psi.Environment[k] = v;
+            foreach (var (k, v) in userEnv)
+                psi.Environment[k] = v;
 
             var (ready, fail, badPattern) = Patterns(s.Config);
             if (badPattern != null)
@@ -83,22 +78,22 @@ namespace mk.dev.runner.core
             s.Ready = ready;
             s.Fail = fail;
 
-            var job = new JobObject();
-            var p = new Process { StartInfo = psi, EnableRaisingEvents = true };
-            try { p.Start(); }
+            ServiceProcess sp;
+            try
+            {
+                sp = CmdProcess.Start(psi);
+            }
             catch (Exception e)
             {
-                job.Dispose();
                 s.State = ServiceState.Crashed;
                 s.Logs.Add($"\x1b[91m[runner] failed to start: {e.Message}\x1b[0m");
                 return;
             }
-            var sp = new ServiceProcess(p, job, job.TryAssign(p));
-            if (!sp.InJob || !job.KillOnClose)
+            var p = sp.P;
+            if (!sp.InJob || !sp.Job.KillOnClose)
                 s.Logs.Add($"\x1b[33m[runner] couldn't fully attach {s.Name} to Dev Runner, so if Dev Runner crashes it may keep running\x1b[0m");
             s.Proc = sp;
             s.StartedEnv = userEnv;
-            try { p.StandardInput.Close(); } catch { }
 
             p.OutputDataReceived += (_, e) => OnLine(s, sp, e.Data);
             p.ErrorDataReceived += (_, e) => OnLine(s, sp, e.Data);
@@ -149,7 +144,8 @@ namespace mk.dev.runner.core
                         return;
                     s.State = ServiceState.Running;
                     s.NoReadyLine = false;
-                    s.ReadyTimer?.Dispose(); s.ReadyTimer = null;
+                    s.ReadyTimer?.Dispose();
+                    s.ReadyTimer = null;
                 });
             }
         }
@@ -176,16 +172,30 @@ namespace mk.dev.runner.core
             if (sp.ExitHandled)
                 return;
             sp.ExitHandled = true;
-            try { sp.Job.Dispose(); } catch { }
-            try { sp.P.Dispose(); } catch { }
+            try
+            {
+                sp.Job.Dispose();
+            }
+            catch { }
+            try
+            {
+                sp.P.Dispose();
+            }
+            catch { }
 
             var current = s.Proc == sp;
-            if (current) { s.Proc = null; s.ReadyTimer?.Dispose(); s.ReadyTimer = null; s.Metrics = ServiceMetrics.Empty; }
+            if (current)
+            {
+                s.Proc = null;
+                s.ReadyTimer?.Dispose();
+                s.ReadyTimer = null;
+                s.Metrics = ServiceMetrics.Empty;
+            }
 
-            if (sp.KillReason == "restart")
+            if (sp.KillReason == StopReason.Restart)
                 return;
 
-            if (sp.KillReason == "stop" || s.Stopped)
+            if (sp.KillReason == StopReason.Stop || s.Stopped)
             {
                 if (s.Proc == null && s.State is not (ServiceState.Building or ServiceState.Retrying or ServiceState.Starting))
                     s.State = IsEnabled(s) ? ServiceState.Stopped : ServiceState.Disabled;
@@ -238,7 +248,7 @@ namespace mk.dev.runner.core
             s.State = IsEnabled(s) ? ServiceState.Stopped : ServiceState.Disabled;
             if (s.Proc is { } sp)
             {
-                KillLogged(s, sp, "stop", wait: false);
+                KillLogged(s, sp, StopReason.Stop, wait: false);
                 s.Proc = null;
             }
             s.Metrics = ServiceMetrics.Empty;
@@ -251,16 +261,14 @@ namespace mk.dev.runner.core
             if (IsManaged && s.Config.IsDotnet)
             {
                 s.Logs.Add("\x1b[2m[runner] rebuild + restart…\x1b[0m");
-                s.State = ServiceState.Building;
-                EnsureDepGraph();
-                TriggerBuild([s.Index], false);
+                QueueBuild([s.Index], false);
                 return;
             }
             s.Logs.Add("\x1b[2m[runner] restarting…\x1b[0m");
             s.CancelTimers();
             if (s.Proc is { } sp)
             {
-                KillLogged(s, sp, "restart", wait: true);
+                KillLogged(s, sp, StopReason.Restart, wait: true);
                 s.Proc = null;
             }
             StartCore(s);
@@ -269,7 +277,10 @@ namespace mk.dev.runner.core
         private void ToggleCore(ServiceRunner s)
         {
             var enable = !IsEnabled(s);
-            try { Project.SetEnabled(s.Config, enable); }
+            try
+            {
+                Project.SetEnabled(s.Config, enable);
+            }
             catch (InvalidOperationException e)
             {
                 s.Logs.Add($"\x1b[91m[runner] {e.Message}\x1b[0m");
@@ -278,13 +289,15 @@ namespace mk.dev.runner.core
             if (enable)
             {
                 s.Fails = 0;
-                if (!SessionActive) { s.State = ServiceState.Stopped; return; }
+                if (!SessionActive)
+                {
+                    s.State = ServiceState.Stopped;
+                    return;
+                }
                 s.Stopped = false;
                 if (IsManaged && s.Config.IsDotnet)
                 {
-                    EnsureDepGraph();
-                    s.State = ServiceState.Building;
-                    TriggerBuild([s.Index], false);
+                    QueueBuild([s.Index], false);
                 }
                 else
                     StartCore(s);
@@ -320,23 +333,32 @@ namespace mk.dev.runner.core
             {
                 exe = "npm";
                 args.AddRange(["run", string.IsNullOrWhiteSpace(c.Script) ? "dev" : c.Script!]);
-                if (c.Args is { Count: > 0 }) { args.Add("--"); args.AddRange(c.Args); }
+                if (c.Args is { Count: > 0 })
+                {
+                    args.Add("--");
+                    args.AddRange(c.Args);
+                }
             }
             else if (c.IsDotnet)
             {
                 exe = "dotnet";
-                var mode = g.DotnetMode.ToLowerInvariant();
+                var mode = g.Mode;
                 args.AddRange(mode switch
                 {
-                    "managed" => ["run", "--no-build", "--no-restore"],
-                    "run" => ["run"],
+                    DotnetMode.Managed => ["run", "--no-build", "--no-restore"],
+                    DotnetMode.Run => ["run"],
                     _ => ["watch", "--no-hot-reload"],
                 });
                 var extra = new List<string>();
-                if (mode == "managed" && port is > 0) extra.AddRange(["--urls", $"http://localhost:{port}"]);
+                if (mode == DotnetMode.Managed && port is > 0)
+                    extra.AddRange(["--urls", $"http://localhost:{port}"]);
                 if (c.Args is { Count: > 0 })
                     extra.AddRange(c.Args);
-                if (extra.Count > 0) { args.Add("--"); args.AddRange(extra); }
+                if (extra.Count > 0)
+                {
+                    args.Add("--");
+                    args.AddRange(extra);
+                }
             }
             else
             {
@@ -344,16 +366,7 @@ namespace mk.dev.runner.core
                 if (c.Args != null)
                     args.AddRange(c.Args);
             }
-            return string.Join(' ', new[] { Quote(exe) }.Concat(args.Select(Quote)));
-        }
-
-        private static string Quote(string a)
-        {
-            if (a.Length == 0)
-                return "\"\"";
-            if (a.IndexOfAny([' ', '\t', '"', '&', '|', '<', '>', '^', '(', ')']) < 0)
-                return a;
-            return "\"" + a.Replace("\"", "\\\"") + "\"";
+            return CommandArgs.Join(new[] { exe }.Concat(args));
         }
 
         private static (Regex? ready, Regex? fail, string? badPattern) Patterns(ServiceConfig c)

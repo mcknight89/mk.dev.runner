@@ -35,7 +35,14 @@ namespace mk.dev.runner.desktop.ViewModels
             var fresh = AppSettings.Load(moveBroken: false);
             if (fresh.LoadProblem != null)
                 return;
-            static string Key(ProjectEntry e) { try { return Path.GetFullPath(e.ConfigFile).ToLowerInvariant(); } catch { return e.ConfigFile.ToLowerInvariant(); } }
+            static string Key(ProjectEntry e)
+            {
+                try
+                {
+                    return Path.GetFullPath(e.ConfigFile).ToLowerInvariant();
+                }
+                catch { return e.ConfigFile.ToLowerInvariant(); }
+            }
             var freshKeys = fresh.Projects.Select(Key).ToHashSet();
             var ourKeys = Settings.Projects.Select(Key).ToHashSet();
 
@@ -60,6 +67,7 @@ namespace mk.dev.runner.desktop.ViewModels
             Settings.Notifications = fresh.Notifications;
             Settings.TrayHintShown = fresh.TrayHintShown;
             Settings.UpdateChannel = fresh.UpdateChannel;
+            Settings.LastVersion = fresh.LastVersion;
             Settings.CheckForUpdates = fresh.CheckForUpdates;
 
             if (Selected == null || !Projects.Contains(Selected))
@@ -74,7 +82,14 @@ namespace mk.dev.runner.desktop.ViewModels
         public ProjectViewModel? Selected
         {
             get => _selected;
-            set { if (Set(ref _selected, value)) { Raise(nameof(HasSelection)); value?.SelectedLog?.Pull(); } }
+            set
+            {
+                if (Set(ref _selected, value))
+                {
+                    Raise(nameof(HasSelection));
+                    value?.SelectedLog?.Pull();
+                }
+            }
         }
         public bool HasSelection => Selected != null;
         public bool HasNoProjects => Projects.Count == 0;
@@ -101,7 +116,10 @@ namespace mk.dev.runner.desktop.ViewModels
             {
                 Project project;
                 var openEditor = false;
-                try { project = Settings.Add(folder); }
+                try
+                {
+                    project = Settings.Add(folder);
+                }
                 catch (ConfigNotFoundException nf)
                 {
                     string? file = null;
@@ -132,7 +150,10 @@ namespace mk.dev.runner.desktop.ViewModels
                 if (openEditor)
                     Selected?.DoEditProject();
             }
-            catch (Exception e) { MessageBox.Show(e.Message, "Couldn't add project"); }
+            catch (Exception e)
+            {
+                Views.ChoiceWindow.Problem("The project couldn't be added", e.Message);
+            }
         }
 
         private static int ChoiceAsk(string message, params string[] buttons)
@@ -170,7 +191,7 @@ namespace mk.dev.runner.desktop.ViewModels
             var msg = added.Count == 0 ? "No new project configs found in that folder or its subfolders." : $"Added {string.Join(", ", added)}.";
             if (errors.Count > 0)
                 msg += "\n\nSkipped:\n" + string.Join("\n", errors);
-            MessageBox.Show(msg, "Import folder");
+            Views.ChoiceWindow.Tell("Import folder", msg);
         }
 
         private void AddLoaded(Project project)
@@ -190,8 +211,8 @@ namespace mk.dev.runner.desktop.ViewModels
         {
             if (Selected is not { } p)
                 return;
-            if (MessageBox.Show($"Remove '{p.Name}' from the list?\n\nIts config files are left where they are.", "Remove project",
-                    MessageBoxButton.OKCancel, MessageBoxImage.Question) != MessageBoxResult.OK) return;
+            if (!Views.ChoiceWindow.Confirm($"Remove {p.Name} from the list?", "Its config files are left where they are.", "Remove"))
+                return;
             Settings.Projects.Remove(p.Entry);
             SaveSettings();
             Projects.Remove(p);

@@ -1,11 +1,10 @@
 using System.Collections.Concurrent;
-using System.Runtime.ExceptionServices;
 
 namespace mk.dev.runner.core.Runtime
 {
     internal sealed class SerialQueue : IDisposable
     {
-        private readonly BlockingCollection<Action> _q = new();
+        private readonly BlockingCollection<Action> _queue = new();
         private readonly Thread _thread;
 
         public event Action<Exception>? Error;
@@ -20,42 +19,63 @@ namespace mk.dev.runner.core.Runtime
 
         private void Run()
         {
-            foreach (var a in _q.GetConsumingEnumerable())
+            foreach (var action in _queue.GetConsumingEnumerable())
             {
-                try { a(); }
-                catch (Exception e) { Error?.Invoke(e); }
+                try
+                {
+                    action();
+                }
+                catch (Exception e)
+                {
+                    Error?.Invoke(e);
+                }
             }
         }
 
-        public void Post(Action a)
+        public void Post(Action action)
         {
-            try { if (!_q.IsAddingCompleted) _q.Add(a); }
-            catch (InvalidOperationException) { }
+            if (_queue.IsAddingCompleted)
+                return;
+            try
+            {
+                _queue.Add(action);
+            }
+            catch (InvalidOperationException)
+            {
+            }
         }
 
-        public void Invoke(Action a)
+        public void Invoke(Action action)
         {
-            if (OnThread || _q.IsAddingCompleted) { a(); return; }
-            ExceptionDispatchInfo? err = null;
-            using var done = new ManualResetEventSlim();
+            if (OnThread || _queue.IsAddingCompleted)
+            {
+                action();
+                return;
+            }
+            var done = new TaskCompletionSource();
             Post(() =>
             {
-                try { a(); }
-                catch (Exception e) { err = ExceptionDispatchInfo.Capture(e); }
-                finally { done.Set(); }
+                try
+                {
+                    action();
+                    done.SetResult();
+                }
+                catch (Exception e)
+                {
+                    done.SetException(e);
+                }
             });
-            done.Wait();
-            err?.Throw();
+            done.Task.GetAwaiter().GetResult();
         }
 
-        public Timer After(TimeSpan delay, Action a)
+        public Timer After(TimeSpan delay, Action action)
         {
-            return new(_ => Post(a), null, delay < TimeSpan.Zero ? TimeSpan.Zero : delay, Timeout.InfiniteTimeSpan);
+            return new Timer(_ => Post(action), null, delay < TimeSpan.Zero ? TimeSpan.Zero : delay, Timeout.InfiniteTimeSpan);
         }
 
         public void Dispose()
         {
-            _q.CompleteAdding();
+            _queue.CompleteAdding();
             if (!OnThread)
                 _thread.Join(5000);
         }

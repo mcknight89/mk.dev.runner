@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using System.Text;
 using System.Text.RegularExpressions;
-using mk.dev.runner.core.Config;
 using mk.dev.runner.core.Logs;
 using mk.dev.runner.core.Native;
 using mk.dev.runner.core.Runtime;
@@ -10,9 +9,15 @@ namespace mk.dev.runner.core
 {
     public sealed partial class ProjectRunner
     {
-        private void TriggerBuild(IEnumerable<int> affected, bool restore)
+        private void QueueBuild(IEnumerable<int> affected, bool restore)
         {
-            foreach (var i in affected) _pendingAffected.Add(i);
+            EnsureDepGraph();
+            foreach (var i in affected)
+            {
+                _services[i].State = ServiceState.Building;
+                _services[i].Stopped = false;
+                _pendingAffected.Add(i);
+            }
             if (restore)
                 _pendingRestore = true;
             if (!_building)
@@ -42,14 +47,15 @@ namespace mk.dev.runner.core
 
             _building = true;
             BuildState = BuildState.Building;
-            lock (_buildErrors) _buildErrors.Clear();
+            lock (_buildErrors)
+                _buildErrors.Clear();
             foreach (var i in affected)
             {
                 var s = _services[i];
                 s.CancelTimers();
                 if (s.Proc is { } sp)
                 {
-                    KillLogged(s, sp, "restart", wait: true);
+                    KillLogged(s, sp, StopReason.Restart, wait: true);
                     s.Proc = null;
                 }
                 s.State = ServiceState.Building;
@@ -57,41 +63,32 @@ namespace mk.dev.runner.core
             BuildLog.Add($"\x1b[2m[build] stopped {affected.Count} service(s) to unlock DLLs, building{(restore ? "" : " --no-restore")}…\x1b[0m");
 
             var args = $"build \"{Path.GetFileName(sln)}\" -c Debug --verbosity minimal{(restore ? "" : " --no-restore")}";
-            var psi = new ProcessStartInfo("cmd.exe")
-            {
-                Arguments = $"/d /s /c \"dotnet {args}\"",
-                WorkingDirectory = Path.GetDirectoryName(sln)!,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardInput = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                StandardOutputEncoding = Encoding.UTF8,
-                StandardErrorEncoding = Encoding.UTF8,
-            };
-            foreach (var (k, v) in DotnetNoServers) psi.Environment[k] = v;
+            var psi = CmdProcess.Info($"dotnet {args}", Path.GetDirectoryName(sln)!);
+            foreach (var (k, v) in DotnetNoServers)
+                psi.Environment[k] = v;
 
-            var job = new JobObject();
-            var p = new Process { StartInfo = psi, EnableRaisingEvents = true };
-            try { p.Start(); }
+            ServiceProcess bp;
+            try
+            {
+                bp = CmdProcess.Start(psi);
+            }
             catch (Exception e)
             {
-                job.Dispose();
                 _building = false;
                 BuildState = BuildState.Failed;
                 BuildLog.Add($"\x1b[31m[build] could not start dotnet: {e.Message}\x1b[0m");
                 return;
             }
-            var bp = new ServiceProcess(p, job, job.TryAssign(p));
             _buildProc = bp;
-            try { p.StandardInput.Close(); } catch { }
+            var p = bp.P;
 
             void OnData(string? line)
             {
                 if (string.IsNullOrWhiteSpace(line))
                     return;
                 if (BuildError.IsMatch(line))
-                    lock (_buildErrors) _buildErrors.Add(Ansi.Strip(line).Trim());
+                    lock (_buildErrors)
+                        _buildErrors.Add(Ansi.Strip(line).Trim());
                 BuildLog.Add(line);
             }
             p.OutputDataReceived += (_, e) => OnData(e.Data);
@@ -99,7 +96,12 @@ namespace mk.dev.runner.core
             p.Exited += (_, _) => Task.Run(() =>
             {
                 var code = -1;
-                try { p.WaitForExit(); code = p.ExitCode; } catch { }
+                try
+                {
+                    p.WaitForExit();
+                    code = p.ExitCode;
+                }
+                catch { }
                 _q.Post(() => OnBuildExit(bp, code, affected));
             });
             p.BeginOutputReadLine();
@@ -108,7 +110,12 @@ namespace mk.dev.runner.core
 
         private void OnBuildExit(ServiceProcess bp, int code, List<int> affected)
         {
-            try { bp.Job.Dispose(); bp.P.Dispose(); } catch { }
+            try
+            {
+                bp.Job.Dispose();
+                bp.P.Dispose();
+            }
+            catch { }
             if (_buildProc != bp)
                 return;
             _buildProc = null;
@@ -119,7 +126,8 @@ namespace mk.dev.runner.core
                 BuildState = BuildState.Ok;
                 var start = affected.Where(i => IsEnabled(_services[i]) && !_services[i].Stopped).ToList();
                 BuildLog.Add($"\x1b[32m[build] ✓ ok — starting {start.Count} service(s)\x1b[0m");
-                foreach (var i in start) StartCore(_services[i]);
+                foreach (var i in start)
+                    StartCore(_services[i]);
             }
             else
             {
@@ -128,7 +136,8 @@ namespace mk.dev.runner.core
                 var n = errs.Count;
                 var shown = n > 0 ? errs.Take(12).ToList() : ["(no compiler errors parsed from output — see full build log)"];
                 BuildLog.Add($"\x1b[41m\x1b[97m [build] FAILED — exit {code}, {n} error{(n == 1 ? "" : "s")} \x1b[0m");
-                foreach (var e in shown) BuildLog.Add($"\x1b[31m  • {e}\x1b[0m");
+                foreach (var e in shown)
+                    BuildLog.Add($"\x1b[31m  • {e}\x1b[0m");
                 if (n > 12)
                     BuildLog.Add($"\x1b[31m  … and {n - 12} more\x1b[0m");
                 foreach (var i in affected)
@@ -138,7 +147,8 @@ namespace mk.dev.runner.core
                         continue;
                     s.State = ServiceState.Failed;
                     s.Logs.Add($"\x1b[91m[build] FAILED — {n} error{(n == 1 ? "" : "s")}, not started:\x1b[0m");
-                    foreach (var e in shown) s.Logs.Add($"\x1b[91m  • {e}\x1b[0m");
+                    foreach (var e in shown)
+                        s.Logs.Add($"\x1b[91m  • {e}\x1b[0m");
                     if (n > 12)
                         s.Logs.Add($"\x1b[91m  … and {n - 12} more\x1b[0m");
                 }
@@ -170,7 +180,11 @@ namespace mk.dev.runner.core
                     continue;
                 dirs.Add(Path.GetDirectoryName(cs)!);
                 string txt;
-                try { txt = File.ReadAllText(cs); } catch { continue; }
+                try
+                {
+                    txt = File.ReadAllText(cs);
+                }
+                catch { continue; }
                 foreach (Match m in re.Matches(txt))
                     stack.Push(Path.GetFullPath(Path.Combine(Path.GetDirectoryName(cs)!, m.Groups[1].Value.Replace('/', '\\'))));
             }
@@ -179,7 +193,11 @@ namespace mk.dev.runner.core
 
         private static string? CsprojIn(string dir)
         {
-            try { return Directory.GetFiles(dir, "*.csproj").FirstOrDefault(); } catch { return null; }
+            try
+            {
+                return Directory.GetFiles(dir, "*.csproj").FirstOrDefault();
+            }
+            catch { return null; }
         }
 
         private HashSet<int> AffectedServices(string absPath)
@@ -192,7 +210,11 @@ namespace mk.dev.runner.core
                     continue;
                 foreach (var d in _depDirs[i])
                     if (absPath.Equals(d, StringComparison.OrdinalIgnoreCase) ||
-                        absPath.StartsWith(d + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)) { hit.Add(i); break; }
+                        absPath.StartsWith(d + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+                    {
+                        hit.Add(i);
+                        break;
+                    }
             }
             return hit;
         }
@@ -228,8 +250,10 @@ namespace mk.dev.runner.core
 
         private void StopSourceWatcher()
         {
-            _srcDebounce?.Dispose(); _srcDebounce = null;
-            _srcWatcher?.Dispose(); _srcWatcher = null;
+            _srcDebounce?.Dispose();
+            _srcDebounce = null;
+            _srcWatcher?.Dispose();
+            _srcWatcher = null;
             _changed.Clear();
             _rebuildAll = false;
         }
@@ -248,7 +272,11 @@ namespace mk.dev.runner.core
             if (!always)
             {
                 DateTime mtime;
-                try { mtime = File.GetLastWriteTime(abs); } catch { mtime = DateTime.Now; }
+                try
+                {
+                    mtime = File.GetLastWriteTime(abs);
+                }
+                catch { mtime = DateTime.Now; }
                 var isNew = !_seenMtimes.TryGetValue(abs, out var prev) ? mtime > _watchStartedAt : mtime != prev;
                 _seenMtimes[abs] = mtime;
                 if (!isNew)
@@ -293,11 +321,10 @@ namespace mk.dev.runner.core
             }
             if (affected.Count == 0)
                 return;
-            foreach (var i in affected) _services[i].State = ServiceState.Building;
             var files = paths.Select(Path.GetFileName).ToList();
             var shown = files.Count == 0 ? "missed changes" : string.Join(", ", files.Take(6)) + (files.Count > 6 ? $" +{files.Count - 6} more" : "");
             BuildLog.Add($"\x1b[36m[watch] changed: {shown} → rebuild: {string.Join(", ", affected.Select(i => _services[i].Name))}\x1b[0m");
-            TriggerBuild(affected, restore);
+            QueueBuild(affected, restore);
         }
     }
 }

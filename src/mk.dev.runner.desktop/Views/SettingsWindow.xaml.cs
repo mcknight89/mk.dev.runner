@@ -37,6 +37,7 @@ namespace mk.dev.runner.desktop.Views
         private void OnUpdates(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
         {
             UpdateStatus.Text = _vm.Updates.Status;
+            UpdateStatus.ToolTip = string.IsNullOrEmpty(_vm.Updates.StatusDetail) ? null : _vm.Updates.StatusDetail;
             CheckNow.IsEnabled = _vm.Updates.IsInstalled && !_vm.Updates.Busy;
         }
 
@@ -50,10 +51,13 @@ namespace mk.dev.runner.desktop.Views
             var s = _vm.Settings;
             if (sender == StartWithWindows)
             {
-                try { StartupRegistration.Apply(StartWithWindows.IsChecked == true); }
+                try
+                {
+                    StartupRegistration.Apply(StartWithWindows.IsChecked == true);
+                }
                 catch (Exception ex)
                 {
-                    MessageBox.Show(this, ex.Message, "Couldn't change Start with Windows");
+                    ChoiceWindow.Problem("Start with Windows couldn't be changed", ex.Message);
                     StartWithWindows.IsChecked = s.StartWithWindows;
                     return;
                 }

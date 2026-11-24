@@ -1,10 +1,7 @@
 using System.Collections.Specialized;
-using System.Globalization;
 using System.Text;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
 using mk.dev.runner.core.Logs;
@@ -81,7 +78,8 @@ namespace mk.dev.runner.desktop.Controls
         public string AllText()
         {
             var sb = new StringBuilder();
-            foreach (var l in Items.OfType<LogLine>()) sb.AppendLine(Ansi.Strip(l.Text));
+            foreach (var l in Items.OfType<LogLine>())
+                sb.AppendLine(Ansi.Strip(l.Text));
             return sb.ToString();
         }
 

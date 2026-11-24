@@ -21,16 +21,41 @@ namespace mk.dev.runner.desktop.Views
         private bool _mask;
 
         public string Key { get => _key; set => Set(ref _key, value); }
-        public string Value { get => _value; set { if (Set(ref _value, value)) Raise(nameof(DisplayValue)); } }
-        public string Where { get => _where; set { if (Set(ref _where, value)) Raise(nameof(WhereText)); } }
+        public string Value
+        {
+            get => _value; set
+            {
+                if (Set(ref _value, value))
+                    Raise(nameof(DisplayValue));
+            }
+        }
+        public string Where
+        {
+            get => _where; set
+            {
+                if (Set(ref _where, value))
+                    Raise(nameof(WhereText));
+            }
+        }
         public string WhereText => $"{_where} ⇄";
 
-        public bool Mask { get => _mask; set { if (Set(ref _mask, value)) Raise(nameof(DisplayValue)); } }
+        public bool Mask
+        {
+            get => _mask; set
+            {
+                if (Set(ref _mask, value))
+                    Raise(nameof(DisplayValue));
+            }
+        }
 
         public string DisplayValue
         {
             get => _mask && _value.Length > 0 ? new string('•', Math.Min(_value.Length, 24)) : _value;
-            set { if (!_mask || value != DisplayValue) Value = value; }
+            set
+            {
+                if (!_mask || value != DisplayValue)
+                    Value = value;
+            }
         }
     }
 
@@ -60,6 +85,7 @@ namespace mk.dev.runner.desktop.Views
         public EnvEditorWindow(ProjectViewModel vm)
         {
             InitializeComponent();
+            InputBindings.Add(new KeyBinding(new Command(() => Save_Click(this, new RoutedEventArgs())), Key.S, ModifierKeys.Control));
             _unsaved = new UnsavedChanges(this);
             _vm = vm;
             _project = vm.Runner!.Project;
@@ -128,7 +154,8 @@ namespace mk.dev.runner.desktop.Views
 
             VarsPanel.Visibility = Visibility.Visible;
             FilePanel.Visibility = Visibility.Collapsed;
-            foreach (var r in _current.Rows) r.Mask = Mask.IsChecked == true;
+            foreach (var r in _current.Rows)
+                r.Mask = Mask.IsChecked == true;
             Grid.ItemsSource = _current.Rows;
             ShowEmptyHint();
             ShowInherited();
@@ -141,7 +168,10 @@ namespace mk.dev.runner.desktop.Views
             var exists = File.Exists(item.FilePath);
             if (item.FileOriginal == null)
             {
-                try { item.FileOriginal = exists ? File.ReadAllText(item.FilePath!) : ""; }
+                try
+                {
+                    item.FileOriginal = exists ? File.ReadAllText(item.FilePath!) : "";
+                }
                 catch (Exception ex) { item.FileOriginal = ""; Status.Text = ex.Message; }
             }
             FileText.Text = item.FileEdited ?? item.FileOriginal;
@@ -237,7 +267,8 @@ namespace mk.dev.runner.desktop.Views
         {
             if (_current == null || _current.IsFile)
                 return;
-            foreach (var r in Grid.SelectedItems.OfType<EnvRow>().ToList()) _current.Rows.Remove(r);
+            foreach (var r in Grid.SelectedItems.OfType<EnvRow>().ToList())
+                _current.Rows.Remove(r);
         }
 
         private void Paste_Click(object sender, RoutedEventArgs e)
@@ -263,7 +294,8 @@ namespace mk.dev.runner.desktop.Views
                 var existing = _current.Rows.FirstOrDefault(r => r.Key.Equals(key, StringComparison.OrdinalIgnoreCase) && r.Where == "Local");
                 if (existing != null)
                     existing.Value = val;
-                else _current.Rows.Add(new EnvRow { Key = key, Value = val, Where = "Local", Mask = Mask.IsChecked == true });
+                else
+                    _current.Rows.Add(new EnvRow { Key = key, Value = val, Where = "Local", Mask = Mask.IsChecked == true });
                 added++;
             }
             Status.Foreground = (System.Windows.Media.Brush)FindResource("Muted");
@@ -275,7 +307,9 @@ namespace mk.dev.runner.desktop.Views
         {
             Grid.CommitEdit(DataGridEditingUnit.Row, true);
             ValueColumn.IsReadOnly = Mask.IsChecked == true;
-            foreach (var s in _scopes) foreach (var r in s.Rows) r.Mask = Mask.IsChecked == true;
+            foreach (var s in _scopes)
+                foreach (var r in s.Rows)
+                    r.Mask = Mask.IsChecked == true;
             Scopes_SelectionChanged(this, null!);
         }
 
@@ -306,7 +340,8 @@ namespace mk.dev.runner.desktop.Views
                     foreach (var where in new[] { (EnvScope.Shared, "Shared"), (EnvScope.Local, "Local") })
                     {
                         var wanted = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-                        foreach (var r in rows.Where(r => r.Where == where.Item2)) wanted[r.Key.Trim()] = r.Value;
+                        foreach (var r in rows.Where(r => r.Where == where.Item2))
+                            wanted[r.Key.Trim()] = r.Value;
                         var current = _project.GetEnv(scope.ServiceKey, where.Item1);
                         if (current.Count == wanted.Count && current.All(kv => wanted.TryGetValue(kv.Key, out var v) && v == kv.Value))
                             continue;
@@ -319,7 +354,7 @@ namespace mk.dev.runner.desktop.Views
             }
             catch (Exception ex)
             {
-                MessageBox.Show(this, ex.Message, "Couldn't save", MessageBoxButton.OK, MessageBoxImage.Warning);
+                ChoiceWindow.Problem("The variables couldn't be saved", ex.Message);
                 return;
             }
 

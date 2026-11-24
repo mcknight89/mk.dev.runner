@@ -1,7 +1,5 @@
 using System.Diagnostics;
-using System.Text;
 using System.Text.RegularExpressions;
-using mk.dev.runner.core.Config;
 using mk.dev.runner.core.Logs;
 using mk.dev.runner.core.Native;
 using mk.dev.runner.core.Runtime;
@@ -62,7 +60,14 @@ namespace mk.dev.runner.core
         public bool SessionActive { get; private set; }
         public bool IsBuilding => _building;
         public bool IsManaged => Project.IsManaged;
-        public IReadOnlyList<string> LastBuildErrors { get { lock (_buildErrors) return [.. _buildErrors]; } }
+        public IReadOnlyList<string> LastBuildErrors
+        {
+            get
+            {
+                lock (_buildErrors)
+                    return [.. _buildErrors];
+            }
+        }
 
         public event Action? ServicesChanged;
         public event Action<RunnerNotice>? Notice;
@@ -114,12 +119,19 @@ namespace mk.dev.runner.core
                 if (!SessionActive)
                     BeginSession();
                 var s = _services[idx];
-                if (!IsEnabled(s)) { ToggleCore(s); return; }
+                if (!IsEnabled(s))
+                {
+                    ToggleCore(s);
+                    return;
+                }
                 if (s.HasProcess)
                     return;
                 s.Stopped = false;
                 s.Fails = 0;
-                if (IsManaged && s.Config.IsDotnet) { EnsureDepGraph(); s.State = ServiceState.Building; TriggerBuild([idx], false); }
+                if (IsManaged && s.Config.IsDotnet)
+                {
+                    QueueBuild([idx], false);
+                }
                 else
                     StartCore(s);
             });
@@ -134,7 +146,12 @@ namespace mk.dev.runner.core
         {
             _q.Post(() =>
             {
-                if (!SessionActive) { BeginSessionSafe(); if (!SessionActive) return; }
+                if (!SessionActive)
+                {
+                    BeginSessionSafe();
+                    if (!SessionActive)
+                        return;
+                }
                 RestartCore(_services[idx]);
             });
         }
@@ -148,12 +165,16 @@ namespace mk.dev.runner.core
                 var managed = new HashSet<int>();
                 foreach (var s in _services.Where(s => IsEnabled(s) && !s.Stopped))
                 {
-                    if (IsManaged && s.Config.IsDotnet) { managed.Add(s.Index); s.State = ServiceState.Building; s.Fails = 0; }
+                    if (IsManaged && s.Config.IsDotnet)
+                    {
+                        managed.Add(s.Index);
+                        s.Fails = 0;
+                    }
                     else
                         RestartCore(s);
                 }
                 if (managed.Count > 0)
-                    TriggerBuild(managed, false);
+                    QueueBuild(managed, false);
             });
         }
 
@@ -169,12 +190,15 @@ namespace mk.dev.runner.core
             {
                 if (!IsManaged)
                     return;
-                if (!SessionActive) { BeginSessionSafe(); if (!SessionActive) return; }
+                if (!SessionActive)
+                {
+                    BeginSessionSafe();
+                    if (!SessionActive)
+                        return;
+                }
                 BuildLog.Add("\x1b[36m[build] clean rebuild…\x1b[0m");
-                EnsureDepGraph();
                 var idxs = _services.Where(s => s.Config.IsDotnet && IsEnabled(s)).Select(s => s.Index).ToHashSet();
-                foreach (var i in idxs) { _services[i].State = ServiceState.Building; _services[i].Stopped = false; }
-                TriggerBuild(idxs, true);
+                QueueBuild(idxs, true);
             });
         }
 
@@ -215,7 +239,10 @@ namespace mk.dev.runner.core
 
         private void BeginSessionSafe()
         {
-            try { BeginSession(); }
+            try
+            {
+                BeginSession();
+            }
             catch (Exception e) { Notice?.Invoke(new RunnerNotice(Project.Name, null, e.Message)); }
         }
 
@@ -225,7 +252,11 @@ namespace mk.dev.runner.core
             try
             {
                 Project.Reload();
-                if (!SameServices()) { LoadServices(); ServicesChanged?.Invoke(); }
+                if (!SameServices())
+                {
+                    LoadServices();
+                    ServicesChanged?.Invoke();
+                }
                 BuildLog.MaxLines = Project.Config.Globals.LogBufferLines;
 
                 var stamp = DateTime.Now.ToString("g");
@@ -285,14 +316,15 @@ namespace mk.dev.runner.core
                     continue;
                 s.Stopped = false;
                 s.Fails = 0;
-                if (IsManaged && s.Config.IsDotnet) { s.State = ServiceState.Building; dotnet.Add(s.Index); }
+                if (IsManaged && s.Config.IsDotnet)
+                    dotnet.Add(s.Index);
                 else
                     StartCore(s);
             }
             if (dotnet.Count > 0)
             {
                 BuildLog.Add($"\x1b[2m[build] building {Path.GetFileName(Project.SolutionPath ?? "solution")}…\x1b[0m");
-                TriggerBuild(dotnet, true);
+                QueueBuild(dotnet, true);
             }
         }
 
@@ -300,11 +332,12 @@ namespace mk.dev.runner.core
         {
             if (!SessionActive)
                 return;
-            _metricsTimer?.Dispose(); _metricsTimer = null;
+            _metricsTimer?.Dispose();
+            _metricsTimer = null;
             StopSourceWatcher();
             StopEnvWatchers();
 
-            _buildProc?.Kill("stop", wait: true);
+            _buildProc?.Kill(StopReason.Stop, wait: true);
             _buildProc = null;
             _building = false;
             _pendingAffected.Clear();
@@ -315,7 +348,7 @@ namespace mk.dev.runner.core
                 s.CancelTimers();
                 if (s.Proc is { } sp)
                 {
-                    KillLogged(s, sp, "stop", wait: true);
+                    KillLogged(s, sp, StopReason.Stop, wait: true);
                     s.Proc = null;
                 }
             }
@@ -327,7 +360,8 @@ namespace mk.dev.runner.core
                 s.ClearHistory();
             }
 
-            foreach (var s in _services) s.Logs.CloseFile();
+            foreach (var s in _services)
+                s.Logs.CloseFile();
             BuildLog.CloseFile();
             BuildState = BuildState.Idle;
 
@@ -343,7 +377,12 @@ namespace mk.dev.runner.core
             _services = Project.Config.Services.Select((c, i) =>
             {
                 var existing = old.FirstOrDefault(o => o.Key.Equals(c.Key, StringComparison.OrdinalIgnoreCase) && o.Index == i);
-                if (existing != null) { existing.Config = c; existing.Logs.MaxLines = max; return existing; }
+                if (existing != null)
+                {
+                    existing.Config = c;
+                    existing.Logs.MaxLines = max;
+                    return existing;
+                }
                 return new ServiceRunner(i, c, max);
             }).ToArray();
             foreach (var s in _services)
@@ -386,7 +425,7 @@ namespace mk.dev.runner.core
             }
         }
 
-        private static void KillLogged(ServiceRunner s, ServiceProcess sp, string reason, bool wait)
+        private static void KillLogged(ServiceRunner s, ServiceProcess sp, StopReason reason, bool wait)
         {
             var error = sp.Kill(reason, wait);
             if (error != null)
@@ -395,7 +434,11 @@ namespace mk.dev.runner.core
 
         public void Dispose()
         {
-            try { StopAll(); } catch { }
+            try
+            {
+                StopAll();
+            }
+            catch { }
             _q.Dispose();
         }
     }

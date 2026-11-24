@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Windows;
+using System.Windows.Input;
 using System.Windows.Controls;
 using Microsoft.Win32;
 using mk.dev.runner.core;
@@ -16,17 +17,99 @@ namespace mk.dev.runner.desktop.Views
 
         public ServiceDefinition D { get; }
 
-        public string Name { get => D.Name; set { D.Name = value; Raise(); Raise(nameof(Title)); } }
-        public string Key { get => D.Key; set { D.Key = value; Raise(); Raise(nameof(Title)); } }
-        public string Type { get => D.Type; set { D.Type = value; Raise(); Raise(nameof(Subtitle)); TypeChanged?.Invoke(); } }
-        public string Dir { get => D.Dir; set { D.Dir = value; Raise(); Raise(nameof(Subtitle)); } }
-        public string? Color { get => D.Color; set { D.Color = value; Raise(); } }
-        public bool Enabled { get => D.Enabled; set { D.Enabled = value; Raise(); } }
-        public string? Script { get => D.Script; set { D.Script = value; Raise(); } }
-        public string? Cmd { get => D.Cmd; set { D.Cmd = value; Raise(); } }
-        public string? Args { get => D.Args; set { D.Args = value; Raise(); } }
-        public string? ReadyPattern { get => D.ReadyPattern; set { D.ReadyPattern = value; Raise(); } }
-        public string? Url { get => D.Url; set { D.Url = value; Raise(); } }
+        public string Name
+        {
+            get => D.Name; set
+            {
+                D.Name = value;
+                Raise();
+                Raise(nameof(Title));
+            }
+        }
+        public string Key
+        {
+            get => D.Key; set
+            {
+                D.Key = value;
+                Raise();
+                Raise(nameof(Title));
+            }
+        }
+        public string Type
+        {
+            get => D.Type; set
+            {
+                D.Type = value;
+                Raise();
+                Raise(nameof(Subtitle));
+                TypeChanged?.Invoke();
+            }
+        }
+        public string Dir
+        {
+            get => D.Dir; set
+            {
+                D.Dir = value;
+                Raise();
+                Raise(nameof(Subtitle));
+            }
+        }
+        public string? Color
+        {
+            get => D.Color; set
+            {
+                D.Color = value;
+                Raise();
+            }
+        }
+        public bool Enabled
+        {
+            get => D.Enabled; set
+            {
+                D.Enabled = value;
+                Raise();
+            }
+        }
+        public string? Script
+        {
+            get => D.Script; set
+            {
+                D.Script = value;
+                Raise();
+            }
+        }
+        public string? Cmd
+        {
+            get => D.Cmd; set
+            {
+                D.Cmd = value;
+                Raise();
+            }
+        }
+        public string? Args
+        {
+            get => D.Args; set
+            {
+                D.Args = value;
+                Raise();
+            }
+        }
+        public string? ReadyPattern
+        {
+            get => D.ReadyPattern; set
+            {
+                D.ReadyPattern = value;
+                Raise();
+            }
+        }
+        public string? Url
+        {
+            get => D.Url; set
+            {
+                D.Url = value;
+                Raise();
+            }
+        }
 
         private string? _portText;
         public string PortText
@@ -37,7 +120,8 @@ namespace mk.dev.runner.desktop.Views
                 _portText = value;
                 D.Port = int.TryParse(value.Trim(), out var p) ? p : null;
                 PortInvalid = value.Trim().Length > 0 && !int.TryParse(value.Trim(), out _);
-                Raise(); Raise(nameof(Subtitle));
+                Raise();
+                Raise(nameof(Subtitle));
             }
         }
         public bool PortInvalid { get; private set; }
@@ -61,6 +145,7 @@ namespace mk.dev.runner.desktop.Views
         public ProjectEditorWindow(ProjectViewModel vm)
         {
             InitializeComponent();
+            InputBindings.Add(new KeyBinding(new Command(() => Save_Click(this, new RoutedEventArgs())), Key.S, ModifierKeys.Control));
             _unsaved = new UnsavedChanges(this);
             _vm = vm;
             _project = vm.Runner!.Project;
@@ -79,7 +164,8 @@ namespace mk.dev.runner.desktop.Views
             TypeBox.ItemsSource = Project.ServiceTypes;
             ColorBox.ItemsSource = Project.Colors;
 
-            foreach (var s in _def.Services) _rows.Add(Hook(new ServiceRow(s)));
+            foreach (var s in _def.Services)
+                _rows.Add(Hook(new ServiceRow(s)));
             List.ItemsSource = _rows;
             List.SelectedIndex = _rows.Count > 0 ? 0 : -1;
             ShowSelected();
@@ -107,7 +193,8 @@ namespace mk.dev.runner.desktop.Views
             NoService.Visibility = has ? Visibility.Collapsed : Visibility.Visible;
             foreach (var el in new FrameworkElement[] { Fields, NpmFields, CommandFields, ArgsFields })
                 el.Visibility = has ? Visibility.Visible : Visibility.Collapsed;
-            foreach (var ex in Form.Children.OfType<Expander>()) ex.Visibility = has ? Visibility.Visible : Visibility.Collapsed;
+            foreach (var ex in Form.Children.OfType<Expander>())
+                ex.Visibility = has ? Visibility.Visible : Visibility.Collapsed;
             if (has)
                 ShowTypeFields();
         }
@@ -142,7 +229,8 @@ namespace mk.dev.runner.desktop.Views
         {
             var n = _rows.Count + 1;
             var key = "service";
-            while (_rows.Any(r => r.Key.Equals(key, StringComparison.OrdinalIgnoreCase))) key = $"service{n++}";
+            while (_rows.Any(r => r.Key.Equals(key, StringComparison.OrdinalIgnoreCase)))
+                key = $"service{n++}";
             var used = _rows.Select(r => r.Color).ToHashSet();
             var row = Hook(new ServiceRow(new ServiceDefinition
             {
@@ -160,8 +248,8 @@ namespace mk.dev.runner.desktop.Views
         {
             if (Selected is not { } r)
                 return;
-            if (MessageBox.Show(this, $"Remove {r.Title} from this project?", "Remove service",
-                    MessageBoxButton.OKCancel, MessageBoxImage.Question) != MessageBoxResult.OK) return;
+            if (!ChoiceWindow.Confirm($"Remove {r.Title} from this project?", "", "Remove"))
+                return;
             var i = _rows.IndexOf(r);
             _rows.Remove(r);
             List.SelectedIndex = Math.Min(i, _rows.Count - 1);
@@ -232,8 +320,16 @@ namespace mk.dev.runner.desktop.Views
         private void Save_Click(object sender, RoutedEventArgs e)
         {
             var name = ProjectName.Text.Trim();
-            if (name.Length == 0) { Status.Text = "The project needs a name."; return; }
-            if (!int.TryParse(MaxRetries.Text.Trim(), out var retries) || retries < 1) { Status.Text = "Restart attempts must be a number, 1 or more."; return; }
+            if (name.Length == 0)
+            {
+                Status.Text = "The project needs a name.";
+                return;
+            }
+            if (!int.TryParse(MaxRetries.Text.Trim(), out var retries) || retries < 1)
+            {
+                Status.Text = "Restart attempts must be a number, 1 or more.";
+                return;
+            }
             if (_rows.FirstOrDefault(r => r.PortInvalid) is { } badPort)
             {
                 Status.Text = $"{badPort.Title}: the port must be a number.";
@@ -258,7 +354,11 @@ namespace mk.dev.runner.desktop.Views
             try
             {
                 _project.SaveDefinition(_def);
-                if (name != _vm.Name && !_vm.TryRename(name)) { Status.Text = $"There's already a project called '{name}'."; return; }
+                if (name != _vm.Name && !_vm.TryRename(name))
+                {
+                    Status.Text = $"There's already a project called '{name}'.";
+                    return;
+                }
             }
             catch (Exception ex)
             {

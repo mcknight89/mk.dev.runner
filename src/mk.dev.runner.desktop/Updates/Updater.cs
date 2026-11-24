@@ -24,6 +24,8 @@ namespace mk.dev.runner.desktop.Updates
             _settings = settings;
             IsInstalled = Installed();
             CurrentVersion = InstalledVersion() ?? AssemblyVersion();
+            if (IsInstalled && CurrentVersion != _settings.LastVersion)
+                NoteNewVersion();
             Status = IsInstalled ? "" : "Updates work once Dev Runner is installed with its Setup.exe.";
             _timer = new DispatcherTimer { Interval = CheckEvery };
             _timer.Tick += async (_, _) => await CheckAsync(manual: false);
@@ -31,15 +33,35 @@ namespace mk.dev.runner.desktop.Updates
 
         public bool IsInstalled { get; }
 
-        public static bool Installed()
+        private void NoteNewVersion()
         {
-            try { return Plain().IsInstalled; }
-            catch { return false; }
+            if (CurrentVersion.Contains("-dev"))
+                _settings.UpdateChannel = DevChannel;
+            _settings.LastVersion = CurrentVersion;
+            try
+            {
+                _settings.Save();
+            }
+            catch (IOException)
+            {
+            }
         }
 
-        private static UpdateManager Plain()
+        private static readonly Lazy<UpdateManager?> _installation = new(() =>
         {
-            return new UpdateManager(new GithubSource(RepoUrl, null, false));
+            try
+            {
+                return new UpdateManager(new GithubSource(RepoUrl, null, false));
+            }
+            catch
+            {
+                return null;
+            }
+        });
+
+        public static bool Installed()
+        {
+            return _installation.Value?.IsInstalled == true;
         }
 
         public bool WantsDev => _settings.UpdateChannel is { } chosen ? chosen == DevChannel : CurrentVersion.Contains("-dev");
@@ -48,8 +70,18 @@ namespace mk.dev.runner.desktop.Updates
         private string _status = "";
         public string Status { get => _status; private set => Set(ref _status, value); }
 
+        private string _statusDetail = "";
+        public string StatusDetail { get => _statusDetail; private set => Set(ref _statusDetail, value); }
+
         private string? _available;
-        public string? Available { get => _available; private set { if (Set(ref _available, value)) Raise(nameof(HasUpdate)); } }
+        public string? Available
+        {
+            get => _available; private set
+            {
+                if (Set(ref _available, value))
+                    Raise(nameof(HasUpdate));
+            }
+        }
         public bool HasUpdate => Available != null;
 
         private bool _busy;
@@ -82,6 +114,7 @@ namespace mk.dev.runner.desktop.Updates
                 return;
             Busy = true;
             Status = "Checking for updates…";
+            StatusDetail = "";
             try
             {
                 _found = await Task.Run(() => Manager().CheckForUpdatesAsync());
@@ -92,7 +125,7 @@ namespace mk.dev.runner.desktop.Updates
             {
                 _found = null;
                 Available = null;
-                Status = $"Couldn't check for updates: {e.Message}";
+                Status = Plain("Couldn't check for updates", e);
             }
             finally { Busy = false; }
         }
@@ -112,7 +145,7 @@ namespace mk.dev.runner.desktop.Updates
             }
             catch (Exception e)
             {
-                Status = $"The update didn't install: {e.Message}";
+                Status = Plain("The update didn't install", e);
                 Busy = false;
             }
         }
@@ -126,14 +159,25 @@ namespace mk.dev.runner.desktop.Updates
 
         private static string? InstalledVersion()
         {
-            try { return Plain().CurrentVersion?.ToString(); }
-            catch { return null; }
+            return Installed() ? _installation.Value!.CurrentVersion?.ToString() : null;
         }
 
         private static string AssemblyVersion()
         {
             return Assembly.GetEntryAssembly()?.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion.Split('+')[0]
             ?? "dev build";
+        }
+
+        private string Plain(string what, Exception e)
+        {
+            StatusDetail = e.Message;
+            return e switch
+            {
+                System.Net.Http.HttpRequestException => $"{what}: couldn't reach GitHub. Check your connection and try again.",
+                TaskCanceledException => $"{what}: GitHub took too long to answer. Try again.",
+                IOException => $"{what}: a file couldn't be written. Try again after closing other copies of Dev Runner.",
+                _ => $"{what}. Hover for details.",
+            };
         }
     }
 }

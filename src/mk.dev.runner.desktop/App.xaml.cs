@@ -49,7 +49,7 @@ namespace mk.dev.runner.desktop
             }
             catch (Exception e)
             {
-                MessageBox.Show($"Couldn't add the sample project: {e.Message}", AppName, MessageBoxButton.OK, MessageBoxImage.Warning);
+                Views.ChoiceWindow.Problem("Couldn't add the sample project", e.Message);
             }
         }
 
@@ -69,21 +69,28 @@ namespace mk.dev.runner.desktop
             _single = new Mutex(true, MutexName, out var first);
             if (!first)
             {
-                try { EventWaitHandle.OpenExisting(ShowEventName).Set(); } catch { }
+                try
+                {
+                    EventWaitHandle.OpenExisting(ShowEventName).Set();
+                }
+                catch { }
                 Shutdown();
                 return;
             }
             _showEvent = new EventWaitHandle(false, EventResetMode.AutoReset, ShowEventName);
             var listener = new Thread(() =>
             {
-                while (_showEvent.WaitOne()) Dispatcher.BeginInvoke(ShowWindow);
+                while (_showEvent.WaitOne())
+                    Dispatcher.BeginInvoke(ShowWindow);
             })
-            { IsBackground = true };
+            {
+                IsBackground = true
+            };
             listener.Start();
 
             DispatcherUnhandledException += (_, ex) =>
             {
-                MessageBox.Show(ex.Exception.Message, "Dev Runner — unexpected error", MessageBoxButton.OK, MessageBoxImage.Error);
+                Views.ChoiceWindow.Problem("Something went wrong", ex.Exception.Message);
                 ex.Handled = true;
             };
 
@@ -102,14 +109,17 @@ namespace mk.dev.runner.desktop
                     return;
                 }
                 var running = _vm.Projects.Sum(p => p.Services.Count(s => s.IsActive));
-                if (running > 0 && MessageBox.Show(_window, $"Closing stops {running} running service{(running == 1 ? "" : "s")}. Close anyway?", AppName,
-                        MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes)
+                if (running > 0 && !Views.ChoiceWindow.Confirm($"Close and stop {running} running service{(running == 1 ? "" : "s")}?", "", "Close and stop"))
                     return;
                 ExitApp();
             };
             _window.StateChanged += (_, _) =>
             {
-                if (_window.WindowState == WindowState.Minimized && _vm.Settings.CloseToTray) { HideWindow(); TellStillRunning(); }
+                if (_window.WindowState == WindowState.Minimized && _vm.Settings.CloseToTray)
+                {
+                    HideWindow();
+                    TellStillRunning();
+                }
             };
             MainWindow = _window;
 
@@ -136,7 +146,8 @@ namespace mk.dev.runner.desktop
             if (_window.WindowState == WindowState.Minimized)
                 _window.WindowState = WindowState.Normal;
             _window.Activate();
-            _window.Topmost = true; _window.Topmost = false;
+            _window.Topmost = true;
+            _window.Topmost = false;
             _window.Focus();
         }
 
@@ -177,13 +188,21 @@ namespace mk.dev.runner.desktop
             new Thread(() => { Thread.Sleep(60_000); Environment.Exit(0); }) { IsBackground = true }.Start();
             Task.Run(() =>
             {
-                try { _vm?.StopEverything(); }
+                try
+                {
+                    _vm?.StopEverything();
+                }
                 catch { }
                 finally
                 {
                     Dispatcher.BeginInvoke(() =>
                     {
-                        try { _tray?.Dispose(); _vm?.Dispose(); _window?.Close(); }
+                        try
+                        {
+                            _tray?.Dispose();
+                            _vm?.Dispose();
+                            _window?.Close();
+                        }
                         catch { }
                         finally { Shutdown(); }
                     });
@@ -194,7 +213,11 @@ namespace mk.dev.runner.desktop
         protected override void OnExit(ExitEventArgs e)
         {
             _tray?.Dispose();
-            try { _single?.ReleaseMutex(); } catch { }
+            try
+            {
+                _single?.ReleaseMutex();
+            }
+            catch { }
             base.OnExit(e);
         }
     }

@@ -1,6 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
-using System.Text.RegularExpressions;
+using mk.helpers;
 
 namespace mk.dev.runner.core
 {
@@ -24,8 +24,8 @@ namespace mk.dev.runner.core
 
         public static string Safe(string name)
         {
-            var s = Regex.Replace(name.ToLowerInvariant(), "[^a-z0-9]+", "-").Trim('-');
-            return s.Length == 0 ? "x" : s;
+            var slug = name.ToSlug();
+            return slug.Length == 0 ? "x" : slug;
         }
     }
 }

@@ -33,8 +33,8 @@ namespace mk.dev.runner.core
 
     public sealed partial class Project
     {
-        public static readonly string[] ServiceTypes = ["dotnet", "npm", "command"];
-        public static readonly string[] DotnetModes = ["watch", "run", "managed"];
+        public static readonly string[] ServiceTypes = [.. Enum.GetNames<ServiceType>().Select(n => n.ToLowerInvariant()).OrderBy(n => n == "command")];
+        public static readonly string[] DotnetModes = [.. Enum.GetNames<DotnetMode>().Select(n => n.ToLowerInvariant())];
         public static readonly string[] Colors = ["cyan", "green", "magenta", "yellow", "blue", "red", "white", "orange", "teal", "purple", "pink", "lime"];
 
         public ProjectDefinition ReadDefinition()
@@ -66,7 +66,7 @@ namespace mk.dev.runner.core
                         Enabled = Json.Bool(s["enabled"]) ?? true,
                         ReadyPattern = Json.String(s["readyPattern"]),
                         Cmd = Json.String(s["cmd"]),
-                        Args = (s["args"] as JsonArray) is { } a ? JoinArgs(a.Select(Json.String).OfType<string>()) : null,
+                        Args = (s["args"] as JsonArray) is { } a ? CommandArgs.Join(a.Select(Json.String).OfType<string>()) : null,
                         Script = Json.String(s["script"]),
                         Url = Json.String(s["url"]),
                     });
@@ -130,13 +130,14 @@ namespace mk.dev.runner.core
                     Set(o, "color", s.Color);
                     if (s.Port is { } port)
                         o["defaultPort"] = port;
-                    else o.Remove("defaultPort");
+                    else
+                        o.Remove("defaultPort");
                     o["enabled"] = s.Enabled;
                     Set(o, "readyPattern", s.ReadyPattern);
                     Set(o, "url", s.Url);
                     Set(o, "cmd", s.Type == "command" ? s.Cmd : null);
                     Set(o, "script", s.Type == "npm" ? s.Script : null);
-                    var args = SplitArgs(s.Args);
+                    var args = CommandArgs.Split(s.Args);
                     if (args.Count > 0)
                         o["args"] = new JsonArray(args.Select(a => (JsonNode?)JsonValue.Create(a)).ToArray());
                     else
@@ -165,61 +166,8 @@ namespace mk.dev.runner.core
         {
             if (string.IsNullOrWhiteSpace(value))
                 o.Remove(key);
-            else o[key] = value.Trim();
-        }
-
-
-
-
-        public static List<string> SplitArgs(string? line)
-        {
-            var list = new List<string>();
-            if (string.IsNullOrWhiteSpace(line))
-                return list;
-            var cur = new StringBuilder();
-            var quoted = false;
-            var any = false;
-            for (var i = 0; i < line.Length; i++)
-            {
-                var c = line[i];
-                if (c == '\\' && i + 1 < line.Length && line[i + 1] == '"')
-                {
-                    cur.Append('"');
-                    i++;
-                    continue;
-                }
-                if (c == '"')
-                {
-                    quoted = !quoted;
-                    any = true;
-                    continue;
-                }
-                if (char.IsWhiteSpace(c) && !quoted)
-                {
-                    if (cur.Length > 0 || any)
-                    {
-                        list.Add(cur.ToString());
-                        cur.Clear();
-                        any = false;
-                    }
-                    continue;
-                }
-                cur.Append(c);
-            }
-            if (cur.Length > 0 || any)
-                list.Add(cur.ToString());
-            return list;
-        }
-
-        public static string JoinArgs(IEnumerable<string> args)
-        {
-            return string.Join(' ', args.Select(QuoteArg));
-        }
-
-        private static string QuoteArg(string a)
-        {
-            var escaped = a.Replace("\"", "\\\"");
-            return a.Length == 0 || a.Any(char.IsWhiteSpace) || a.Contains('"') ? $"\"{escaped}\"" : escaped;
+            else
+                o[key] = value.Trim();
         }
     }
 }

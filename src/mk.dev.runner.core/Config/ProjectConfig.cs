@@ -1,4 +1,3 @@
-using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace mk.dev.runner.core.Config
@@ -18,6 +17,8 @@ namespace mk.dev.runner.core.Config
     public sealed class GlobalsConfig
     {
         public string DotnetMode { get; set; } = "watch";
+
+        [JsonIgnore] public DotnetMode Mode => Enum.TryParse<DotnetMode>(DotnetMode, ignoreCase: true, out var mode) ? mode : Config.DotnetMode.Watch;
 
         public string? Solution { get; set; }
 
@@ -58,7 +59,8 @@ namespace mk.dev.runner.core.Config
 
         [JsonIgnore] public string DisplayName => string.IsNullOrWhiteSpace(Name) ? Key : Name!;
 
-        [JsonIgnore] public bool IsDotnet => Type.Equals("dotnet", StringComparison.OrdinalIgnoreCase);
-        [JsonIgnore] public bool IsNpm => Type.Equals("npm", StringComparison.OrdinalIgnoreCase);
+        [JsonIgnore] public ServiceType Kind => Enum.TryParse<ServiceType>(Type, ignoreCase: true, out var kind) ? kind : ServiceType.Command;
+        [JsonIgnore] public bool IsDotnet => Kind == ServiceType.Dotnet;
+        [JsonIgnore] public bool IsNpm => Kind == ServiceType.Npm;
     }
 }

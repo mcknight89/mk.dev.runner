@@ -1,9 +1,6 @@
-using mk.helpers;
-using System.Diagnostics;
 using System.Text.RegularExpressions;
 using mk.dev.runner.core.Config;
 using mk.dev.runner.core.Logs;
-using mk.dev.runner.core.Native;
 
 namespace mk.dev.runner.core
 {
@@ -30,7 +27,17 @@ namespace mk.dev.runner.core
         public LogBuffer Logs { get; }
         public ServiceMetrics Metrics { get; internal set; } = ServiceMetrics.Empty;
 
-        public int? Pid { get { try { return Proc?.P.Id; } catch { return null; } } }
+        public int? Pid
+        {
+            get
+            {
+                try
+                {
+                    return Proc?.P.Id;
+                }
+                catch { return null; }
+            }
+        }
         public DateTime? StartedAt => Proc?.StartedAt;
         public bool HasProcess => Proc != null;
 
@@ -49,8 +56,10 @@ namespace mk.dev.runner.core
 
         internal void CancelTimers()
         {
-            RetryTimer?.Dispose(); RetryTimer = null;
-            ReadyTimer?.Dispose(); ReadyTimer = null;
+            RetryTimer?.Dispose();
+            RetryTimer = null;
+            ReadyTimer?.Dispose();
+            ReadyTimer = null;
         }
 
         public int HistoryVersion { get; private set; }

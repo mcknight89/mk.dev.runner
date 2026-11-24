@@ -17,7 +17,11 @@ namespace mk.dev.runner.core.Logs
         {
             var clean = true;
             foreach (var ch in s)
-                if (ch < 0x20 && ch != '\x1b' || ch == '\x7f') { clean = false; break; }
+                if (ch < 0x20 && ch != '\x1b' || ch == '\x7f')
+                {
+                    clean = false;
+                    break;
+                }
             if (clean && s.IndexOf('\x1b') < 0)
                 return s;
 
@@ -31,8 +35,10 @@ namespace mk.dev.runner.core.Logs
                     if (n == '[')
                     {
                         var j = i + 2;
-                        while (j < s.Length && s[j] is >= '0' and <= '?') j++;
-                        while (j < s.Length && s[j] is >= ' ' and <= '/') j++;
+                        while (j < s.Length && s[j] is >= '0' and <= '?')
+                            j++;
+                        while (j < s.Length && s[j] is >= ' ' and <= '/')
+                            j++;
                         if (j < s.Length)
                         {
                             if (s[j] == 'm')
@@ -46,14 +52,19 @@ namespace mk.dev.runner.core.Logs
                     if (n == ']')
                     {
                         var j = i + 2;
-                        while (j < s.Length && s[j] != '\x07' && !(s[j] == '\x1b' && j + 1 < s.Length && s[j + 1] == '\\')) j++;
+                        while (j < s.Length && s[j] != '\x07' && !(s[j] == '\x1b' && j + 1 < s.Length && s[j + 1] == '\\'))
+                            j++;
                         i = j < s.Length && s[j] == '\x1b' ? j + 1 : j;
                         continue;
                     }
                     i++;
                     continue;
                 }
-                if (c == '\t') { sb.Append("    "); continue; }
+                if (c == '\t')
+                {
+                    sb.Append("    ");
+                    continue;
+                }
                 if (c < 0x20 || c == '\x7f')
                     continue;
                 sb.Append(c);
@@ -72,7 +83,8 @@ namespace mk.dev.runner.core.Logs
         public static List<Segment> Parse(string s)
         {
             var list = new List<Segment>();
-            int? fg = null, bg = null; bool bold = false, dim = false;
+            int? fg = null, bg = null;
+            bool bold = false, dim = false;
             var start = 0;
             var m = Sgr().Match(s);
             while (true)
@@ -91,16 +103,37 @@ namespace mk.dev.runner.core.Logs
                         continue;
                     switch (c)
                     {
-                        case 0: fg = bg = null; bold = dim = false; break;
-                        case 1: bold = true; break;
-                        case 2: dim = true; break;
-                        case 22: bold = dim = false; break;
-                        case 39: fg = null; break;
-                        case 49: bg = null; break;
-                        case >= 30 and <= 37: fg = Basic[c - 30 + (bold ? 8 : 0)]; break;
-                        case >= 90 and <= 97: fg = Basic[c - 90 + 8]; break;
-                        case >= 40 and <= 47: bg = Basic[c - 40]; break;
-                        case >= 100 and <= 107: bg = Basic[c - 100 + 8]; break;
+                        case 0:
+                            fg = bg = null;
+                            bold = dim = false;
+                            break;
+                        case 1:
+                            bold = true;
+                            break;
+                        case 2:
+                            dim = true;
+                            break;
+                        case 22:
+                            bold = dim = false;
+                            break;
+                        case 39:
+                            fg = null;
+                            break;
+                        case 49:
+                            bg = null;
+                            break;
+                        case >= 30 and <= 37:
+                            fg = Basic[c - 30 + (bold ? 8 : 0)];
+                            break;
+                        case >= 90 and <= 97:
+                            fg = Basic[c - 90 + 8];
+                            break;
+                        case >= 40 and <= 47:
+                            bg = Basic[c - 40];
+                            break;
+                        case >= 100 and <= 107:
+                            bg = Basic[c - 100 + 8];
+                            break;
                         case 38 or 48:
                             int? col = null;
                             if (k + 1 < codes.Length && codes[k + 1] == "2" && k + 4 < codes.Length)
@@ -115,7 +148,8 @@ namespace mk.dev.runner.core.Logs
                             }
                             if (c == 38)
                                 fg = col;
-                            else bg = col;
+                            else
+                                bg = col;
                             break;
                     }
                 }
@@ -134,7 +168,11 @@ namespace mk.dev.runner.core.Logs
         {
             if (n < 16)
                 return Basic[n];
-            if (n >= 232) { int g = 8 + (n - 232) * 10; return (g << 16) | (g << 8) | g; }
+            if (n >= 232)
+            {
+                int g = 8 + (n - 232) * 10;
+                return (g << 16) | (g << 8) | g;
+            }
             n -= 16;
             int r = n / 36, gg = n / 6 % 6, b = n % 6;
             static int L(int v)

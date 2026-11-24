@@ -123,7 +123,10 @@ namespace mk.dev.runner.core
             {
                 _cfg = Json.ReadObject(ConfigPath, missingIsEmpty: false);
                 LocalProblem = null;
-                try { _local = Json.ReadObject(LocalPath, missingIsEmpty: true); }
+                try
+                {
+                    _local = Json.ReadObject(LocalPath, missingIsEmpty: true);
+                }
                 catch (Exception e)
                 {
                     _local = new JsonObject();
@@ -164,7 +167,7 @@ namespace mk.dev.runner.core
         public string? SolutionPath =>
             string.IsNullOrWhiteSpace(Config.Globals.Solution) ? null : Path.GetFullPath(Path.Combine(RootDir, Config.Globals.Solution!));
 
-        public bool IsManaged => Config.Globals.DotnetMode.Equals("managed", StringComparison.OrdinalIgnoreCase);
+        public bool IsManaged => Config.Globals.Mode == DotnetMode.Managed;
 
 
         private JsonObject? LocalService(string key)
@@ -203,12 +206,11 @@ namespace mk.dev.runner.core
                 var o = Json.Obj(Json.Obj(_local, "services"), svc.Key);
                 if (enabled == (svc.Enabled ?? true))
                     o.Remove("enabled");
-                else o["enabled"] = enabled;
+                else
+                    o["enabled"] = enabled;
                 SaveLocal();
             }
         }
-
-
 
         public Dictionary<string, string> GetEnv(string? serviceKey, EnvScope scope)
         {
@@ -237,7 +239,8 @@ namespace mk.dev.runner.core
                                  ?? throw new KeyNotFoundException($"No service '{serviceKey}' in {Path.GetFileName(ConfigPath)}.");
                     if (map.Count == 0)
                         target.Remove("env");
-                    else target["env"] = map;
+                    else
+                        target["env"] = map;
                     Json.WriteObject(ConfigPath, _cfg);
                     Reload();
                     return;
@@ -245,7 +248,8 @@ namespace mk.dev.runner.core
                 var t = serviceKey == null ? _local : Json.Obj(Json.Obj(_local, "services"), serviceKey);
                 if (map.Count == 0)
                     t.Remove("env");
-                else t["env"] = map;
+                else
+                    t["env"] = map;
                 SaveLocal();
             }
         }
@@ -259,7 +263,10 @@ namespace mk.dev.runner.core
             var found = new List<string> { Path.Combine(RootDir, ".env") };
             foreach (var dir in dirs.Distinct(StringComparer.OrdinalIgnoreCase))
             {
-                try { found.AddRange(Directory.GetFiles(dir, ".env*").Order(StringComparer.OrdinalIgnoreCase)); }
+                try
+                {
+                    found.AddRange(Directory.GetFiles(dir, ".env*").Order(StringComparer.OrdinalIgnoreCase));
+                }
                 catch (IOException) { }
                 catch (UnauthorizedAccessException) { }
             }
@@ -290,7 +297,11 @@ namespace mk.dev.runner.core
             lock (_gate)
             {
                 var env = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-                void Add(Dictionary<string, string> m) { foreach (var (k, v) in m) env[k] = v; }
+                void Add(Dictionary<string, string> m)
+                {
+                    foreach (var (k, v) in m)
+                        env[k] = v;
+                }
                 Add(GetEnv(null, EnvScope.Shared));
                 Add(GetEnv(null, EnvScope.Local));
                 Add(GetEnv(svc.Key, EnvScope.Shared));

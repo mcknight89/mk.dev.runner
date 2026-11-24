@@ -10,7 +10,8 @@ namespace mk.dev.runner.desktop.ViewModels
         {
             if (lines.Count < 50)
             {
-                foreach (var l in lines) Add(l);
+                foreach (var l in lines)
+                    Add(l);
                 return;
             }
             CheckReentrancy();

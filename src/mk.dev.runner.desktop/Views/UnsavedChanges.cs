@@ -61,9 +61,7 @@ namespace mk.dev.runner.desktop.Views
         {
             if (!Changed || Saved)
                 return;
-            var answer = MessageBox.Show(_window, "You have changes that aren't saved. Close without saving them?", App.AppName,
-                MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No);
-            if (answer != MessageBoxResult.Yes)
+            if (!ChoiceWindow.Confirm("Close without saving?", "You have changes that aren't saved.", "Close without saving"))
                 e.Cancel = true;
         }
     }

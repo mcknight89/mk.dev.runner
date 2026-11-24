@@ -1,9 +1,3 @@
-using System.Drawing;
-using System.Drawing.Drawing2D;
-using System.Windows.Forms;
-using mk.dev.runner.desktop.ViewModels;
-using Application = System.Windows.Application;
-
 namespace mk.dev.runner.desktop
 {
     internal static class StartupRegistration

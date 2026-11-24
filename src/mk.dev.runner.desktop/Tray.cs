@@ -1,8 +1,6 @@
 using System.Drawing;
-using System.Drawing.Drawing2D;
 using System.Windows.Forms;
 using mk.dev.runner.desktop.ViewModels;
-using Application = System.Windows.Application;
 
 namespace mk.dev.runner.desktop
 {
@@ -24,7 +22,7 @@ namespace mk.dev.runner.desktop
             _running = Icons.Make(Color.FromArgb(0x4a, 0xde, 0x80));
             _problem = Icons.Make(Color.FromArgb(0xf8, 0x71, 0x71));
 
-            _icon = new NotifyIcon { Icon = _idle, Text = App.AppName, Visible = true, ContextMenuStrip = new ContextMenuStrip() };
+            _icon = new NotifyIcon { Icon = _idle, Text = App.AppName, Visible = true, ContextMenuStrip = new ContextMenuStrip { Renderer = new TrayMenuRenderer() } };
             _icon.ContextMenuStrip.Opening += (_, e) => BuildMenu();
             _icon.MouseClick += (_, e) => { if (e.Button == MouseButtons.Left) _show(); };
             _icon.BalloonTipClicked += (_, _) =>
@@ -60,7 +58,12 @@ namespace mk.dev.runner.desktop
             foreach (var p in _vm.Projects)
             {
                 var item = new ToolStripMenuItem($"{p.Name}   {p.StatusText}{(p.MemoryText != "" ? " · " + p.MemoryText : "")}");
-                if (p.Runner == null) { item.Enabled = false; m.Items.Add(item); continue; }
+                if (p.Runner == null)
+                {
+                    item.Enabled = false;
+                    m.Items.Add(item);
+                    continue;
+                }
                 item.DropDownItems.Add("Start all", null, (_, _) => p.StartAll.Execute(null));
                 var stop = item.DropDownItems.Add("Stop all", null, (_, _) => p.StopAll.Execute(null));
                 stop.Enabled = p.Runner.SessionActive;
@@ -71,7 +74,7 @@ namespace mk.dev.runner.desktop
                 {
                     var si = new ToolStripMenuItem($"{s.Name}   {s.StateText}{(s.MemoryText != "—" ? " · " + s.MemoryText : "")}");
                     si.DropDownItems.Add(s.IsActive ? "Stop" : "Start", null, (_, _) => s.StartStop.Execute(null));
-                    si.DropDownItems.Add("Restart", null, (_, _) => s.Restart.Execute(null)).Enabled = p.Runner.SessionActive && s.Enabled;
+                    si.DropDownItems.Add("Restart", null, (_, _) => s.Restart.Execute(null)).Enabled = s.Restart.CanExecute(null);
                     if (s.OpenUrl.CanExecute(null))
                         si.DropDownItems.Add("Open in browser", null, (_, _) => s.OpenUrl.Execute(null));
                     item.DropDownItems.Add(si);
@@ -93,7 +96,9 @@ namespace mk.dev.runner.desktop
         {
             _icon.Visible = false;
             _icon.Dispose();
-            _idle.Dispose(); _running.Dispose(); _problem.Dispose();
+            _idle.Dispose();
+            _running.Dispose();
+            _problem.Dispose();
         }
     }
 }

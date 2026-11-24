@@ -38,6 +38,10 @@
                     <ColumnDefinition Width="20"/>
                     <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
                 <StackPanel>
                     <TextBlock Style="{StaticResource Label}" Text="Name in Dev Runner"/>
                     <TextBox x:Name="ProjectName"/>
@@ -53,13 +57,13 @@
                         <TextBox x:Name="Solution"/>
                     </DockPanel>
                 </StackPanel>
-                <StackPanel Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="5" Margin="0,62,0,0" Orientation="Horizontal">
+                <WrapPanel Grid.Row="1" Grid.ColumnSpan="5" Margin="0,12,0,0">
                     <CheckBox x:Name="AutoRetry" Style="{StaticResource Switch}" Content="Restart a service when it crashes" VerticalAlignment="Center"/>
                     <TextBlock Text="up to" Foreground="{StaticResource Muted}" Margin="16,0,6,0" VerticalAlignment="Center"/>
                     <TextBox x:Name="MaxRetries" Width="44" TextAlignment="Center"/>
                     <TextBlock Text="times in a row" Foreground="{StaticResource Muted}" Margin="6,0,0,0" VerticalAlignment="Center"/>
                     <CheckBox x:Name="AutoRebuild" Style="{StaticResource Switch}" Content="Rebuild when code changes (managed)" Margin="28,0,0,0" VerticalAlignment="Center"/>
-                </StackPanel>
+                </WrapPanel>
             </Grid>
         </Border>
 
@@ -75,8 +79,8 @@
                 <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,8,0,0">
                     <Button Content="+ Add service" Click="Add_Click"/>
                     <Button Content="Remove" Style="{StaticResource Danger}" Click="Remove_Click" Margin="6,0,0,0"/>
-                    <Button Style="{StaticResource Icon}" Content="&#xE70E;" Click="Up_Click" Margin="6,0,0,0" ToolTip="Move up"/>
-                    <Button Style="{StaticResource Icon}" Content="&#xE70D;" Click="Down_Click" ToolTip="Move down"/>
+                    <Button Style="{StaticResource Icon}" Content="&#xE70E;" Click="Up_Click" Margin="6,0,0,0" ToolTip="Move up" AutomationProperties.Name="Move up"/>
+                    <Button Style="{StaticResource Icon}" Content="&#xE70D;" Click="Down_Click" ToolTip="Move down" AutomationProperties.Name="Move down"/>
                 </StackPanel>
                 <ListBox x:Name="List" Background="{StaticResource Panel}" ItemContainerStyle="{StaticResource ProjectItem}"
                          SelectionChanged="List_SelectionChanged" ScrollViewer.HorizontalScrollBarVisibility="Disabled">

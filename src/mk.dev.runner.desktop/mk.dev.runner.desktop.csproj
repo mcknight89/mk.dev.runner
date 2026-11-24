@@ -27,6 +27,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="app.ico" LogicalName="app.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\mk.dev.runner.core\mk.dev.runner.core.csproj" />
   </ItemGroup>
 

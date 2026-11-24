@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Windows;
 
 namespace mk.dev.runner.desktop
 {
@@ -15,7 +14,7 @@ namespace mk.dev.runner.desktop
             }
             catch (Exception e)
             {
-                MessageBox.Show(e.Message, "Dev Runner");
+                Views.ChoiceWindow.Problem($"{target} couldn't be opened", e.Message);
             }
         }
 

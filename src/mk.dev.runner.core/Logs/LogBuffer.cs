@@ -17,9 +17,23 @@ namespace mk.dev.runner.core.Logs
             MaxLines = Math.Max(100, maxLines);
         }
 
-        public long LastSeq { get { lock (_gate) return _seq; } }
+        public long LastSeq
+        {
+            get
+            {
+                lock (_gate)
+                    return _seq;
+            }
+        }
 
-        public int Count { get { lock (_gate) return _lines.Count; } }
+        public int Count
+        {
+            get
+            {
+                lock (_gate)
+                    return _lines.Count;
+            }
+        }
 
         public void Add(string text)
         {
@@ -32,7 +46,11 @@ namespace mk.dev.runner.core.Logs
                 var over = _lines.Count - MaxLines;
                 if (over > 0)
                     _lines.RemoveRange(0, over);
-                try { _file?.WriteLine(LogFiles.Format(line)); } catch { }
+                try
+                {
+                    _file?.WriteLine(LogFiles.Format(line));
+                }
+                catch { }
             }
         }
 
@@ -48,13 +66,15 @@ namespace mk.dev.runner.core.Logs
 
         public List<LogLine> Snapshot()
         {
-            lock (_gate) return [.. _lines];
+            lock (_gate)
+                return [.. _lines];
         }
 
 
         public void Clear()
         {
-            lock (_gate) _lines.Clear();
+            lock (_gate)
+                _lines.Clear();
         }
 
         public void OpenFile(string path, string header)
@@ -89,14 +109,18 @@ namespace mk.dev.runner.core.Logs
 
         public void CloseFile()
         {
-            lock (_gate) CloseFileLocked();
+            lock (_gate)
+                CloseFileLocked();
         }
 
         private void Flush()
         {
             lock (_gate)
             {
-                try { _file?.Flush(); }
+                try
+                {
+                    _file?.Flush();
+                }
                 catch (IOException) { }
                 catch (ObjectDisposedException) { }
             }
@@ -106,7 +130,11 @@ namespace mk.dev.runner.core.Logs
         {
             _flush?.Dispose();
             _flush = null;
-            try { _file?.Dispose(); } catch { }
+            try
+            {
+                _file?.Dispose();
+            }
+            catch { }
             _file = null;
             Path = null;
         }

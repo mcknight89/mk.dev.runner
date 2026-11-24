@@ -123,7 +123,8 @@ namespace mk.dev.runner.core.Config
         public static JsonObject FromStringMap(IEnumerable<KeyValuePair<string, string>> map)
         {
             var o = new JsonObject(NodeOptions);
-            foreach (var (k, v) in map) o[k] = v;
+            foreach (var (k, v) in map)
+                o[k] = v;
             return o;
         }
     }

@@ -22,7 +22,10 @@ namespace mk.dev.runner.tests
 
         public void Dispose()
         {
-            try { Directory.Delete(Dir, true); }
+            try
+            {
+                Directory.Delete(Dir, true);
+            }
             catch (IOException) { }
         }
     }

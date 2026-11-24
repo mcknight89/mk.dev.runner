@@ -1,18 +1,32 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
+using mk.dev.runner.core;
 using mk.dev.runner.desktop.ViewModels;
 
 namespace mk.dev.runner.desktop
 {
     public partial class MainWindow : Window
     {
+        private readonly MainViewModel _vm;
+
         public MainWindow(MainViewModel vm)
         {
             InitializeComponent();
             DataContext = vm;
+            _vm = vm;
+            RestoreLayout();
+            IsVisibleChanged += (_, _) =>
+            {
+                if (!IsVisible)
+                    SaveLayout();
+            };
+            Closing += (_, _) => SaveLayout();
+            InputBindings.Add(new KeyBinding(Log.FindCommand, Key.F, ModifierKeys.Control));
+            PreviewKeyDown += (_, e) => e.Handled = Shortcut(vm, e);
             Title = App.AppName;
             AppTitle.Text = App.AppName;
-            var icon = Icons.Make(System.Drawing.Color.FromArgb(0x60, 0xa5, 0xfa), 48);
+            var icon = Icons.Make(null, 48);
             Icon = Icons.ToImageSource(icon);
         }
 
@@ -31,14 +45,57 @@ namespace mk.dev.runner.desktop
             }
         }
 
-        private void CopyLog_Click(object sender, RoutedEventArgs e)
+        private static bool Shortcut(MainViewModel vm, KeyEventArgs e)
         {
-            Log.CopyAll();
+            if (e.Key != Key.F5 || vm.Selected is not { } project)
+                return false;
+            var command = Keyboard.Modifiers switch
+            {
+                ModifierKeys.None => project.StartAll,
+                ModifierKeys.Shift => project.StopAll,
+                ModifierKeys.Control | ModifierKeys.Shift => project.RestartAll,
+                _ => null,
+            };
+            if (command == null || !command.CanExecute(null))
+                return false;
+            command.Execute(null);
+            return true;
         }
 
-        private void Bottom_Click(object sender, RoutedEventArgs e)
+        private void RestoreLayout()
         {
-            Log.ScrollToEnd();
+            if (_vm.Settings.Window is not { } w || w.Width < MinWidth || w.Height < MinHeight)
+                return;
+            var screen = new Rect(SystemParameters.VirtualScreenLeft, SystemParameters.VirtualScreenTop,
+                SystemParameters.VirtualScreenWidth, SystemParameters.VirtualScreenHeight);
+            if (!screen.IntersectsWith(new Rect(w.Left, w.Top, w.Width, w.Height)))
+                return;
+            WindowStartupLocation = WindowStartupLocation.Manual;
+            Left = w.Left;
+            Top = w.Top;
+            Width = w.Width;
+            Height = w.Height;
+            if (w.Maximized)
+                WindowState = WindowState.Maximized;
+            if (w.CardsHeight > 0)
+                CardsRow.Height = new GridLength(w.CardsHeight);
+        }
+
+        private void SaveLayout()
+        {
+            var bounds = WindowState == WindowState.Normal ? new Rect(Left, Top, Width, Height) : RestoreBounds;
+            if (bounds.IsEmpty)
+                return;
+            _vm.Settings.Window = new WindowLayout
+            {
+                Left = bounds.Left,
+                Top = bounds.Top,
+                Width = bounds.Width,
+                Height = bounds.Height,
+                Maximized = WindowState == WindowState.Maximized,
+                CardsHeight = CardsRow.Height.IsAbsolute ? CardsRow.Height.Value : 0,
+            };
+            _vm.SaveSettings();
         }
     }
 }

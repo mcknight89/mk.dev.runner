@@ -20,10 +20,11 @@
                 <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="10">
                     <Button Content="+ Add" Command="{Binding AddProject}" ToolTip="Add a project folder (its config is found in its root)"/>
                     <Button Content="Import folder" Command="{Binding ImportFolder}" Margin="6,0,0,0" ToolTip="Add every project in a folder and the folders directly inside it"/>
-                    <Button Style="{StaticResource Icon}" Content="&#xE713;" Command="{Binding OpenSettings}" Margin="6,0,0,0" ToolTip="Settings"/>
+                    <Button Style="{StaticResource Icon}" Content="&#xE713;" Command="{Binding OpenSettings}" Margin="6,0,0,0" ToolTip="Settings" AutomationProperties.Name="Settings"/>
                 </StackPanel>
                 <TextBlock DockPanel.Dock="Bottom" Text="{Binding Updates.Status}" Foreground="{StaticResource Faint}" FontSize="11"
-                           TextWrapping="Wrap" Margin="12,4,12,0" Visibility="{Binding Updates.HasUpdate, Converter={StaticResource Vis}}"/>
+                           TextWrapping="Wrap" Margin="12,4,12,0" Visibility="{Binding Updates.HasUpdate, Converter={StaticResource Vis}}"
+                           ToolTip="{Binding Updates.StatusDetail}"/>
                 <Button DockPanel.Dock="Bottom" Style="{StaticResource Primary}" Margin="10,0,10,0" Command="{Binding InstallUpdate}"
                         Visibility="{Binding Updates.HasUpdate, Converter={StaticResource Vis}}" ToolTip="{Binding Updates.Status}">
                     <TextBlock>
@@ -72,7 +73,7 @@
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto" MinHeight="120"/>
+                <RowDefinition x:Name="CardsRow" Height="Auto" MinHeight="120"/>
                 <RowDefinition Height="5"/>
                 <RowDefinition Height="*" MinHeight="140"/>
             </Grid.RowDefinitions>
@@ -83,31 +84,35 @@
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
-                <StackPanel>
-                    <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="{Binding Name}" FontSize="22" FontWeight="SemiBold"/>
-                        <TextBlock Text="{Binding ModeText}" Foreground="{StaticResource Faint}" Margin="12,0,0,3" VerticalAlignment="Bottom"/>
-                        <TextBlock Text="{Binding BuildText}" Foreground="{StaticResource Muted}" Margin="12,0,0,3" VerticalAlignment="Bottom"/>
-                        <TextBlock Text="{Binding BusyText}" Foreground="{StaticResource Accent}" Margin="12,0,0,3" VerticalAlignment="Bottom"/>
-                    </StackPanel>
-                    <TextBlock Text="{Binding ConfigPath}" Foreground="{StaticResource Faint}" FontSize="11.5" Margin="0,2,0,0" TextTrimming="CharacterEllipsis"/>
+                <StackPanel Margin="0,0,12,0">
+                    <TextBlock Text="{Binding Name}" FontSize="22" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" ToolTip="{Binding Name}"/>
+                    <TextBlock TextTrimming="CharacterEllipsis" Margin="0,2,0,0">
+                        <Run Text="{Binding ModeText, Mode=OneWay}" Foreground="{StaticResource Faint}"/>
+                        <Run Text="{Binding BuildText, Mode=OneWay}" Foreground="{StaticResource Muted}"/>
+                        <Run Text="{Binding BusyText, Mode=OneWay}" Foreground="{StaticResource Accent}"/>
+                    </TextBlock>
+                    <TextBlock Text="{Binding ConfigPath}" Foreground="{StaticResource Faint}" FontSize="11.5" Margin="0,2,0,0" TextTrimming="CharacterEllipsis"
+                               ToolTip="{Binding ConfigPath}"/>
                     <TextBlock Text="{Binding Error}" Foreground="{StaticResource Bad}" TextWrapping="Wrap" Margin="0,6,0,0"
                                Visibility="{Binding HasError, Converter={StaticResource Vis}}"/>
                 </StackPanel>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
-                    <CheckBox Style="{StaticResource Switch}" IsChecked="{Binding AutoStart}" Content="Auto-start" Margin="0,0,14,0"
-                              VerticalAlignment="Center" ToolTip="Start this project when the desktop app starts"/>
-                    <Button Style="{StaticResource Primary}" Content="Start all" Command="{Binding StartAll}"/>
-                    <Button Style="{StaticResource Danger}" Content="Stop all" Command="{Binding StopAll}" Margin="6,0,0,0"/>
-                    <Button Content="Restart all" Command="{Binding RestartAll}" Margin="6,0,0,0"/>
-                    <Button Content="Clean rebuild" Command="{Binding CleanRebuild}" Margin="6,0,0,0"
-                            Visibility="{Binding IsManaged, Converter={StaticResource Vis}}"/>
+                    <Button Style="{StaticResource Primary}" Content="Start all" Command="{Binding StartAll}" ToolTipService.ShowOnDisabled="True"
+                            ToolTip="Start every enabled service (F5). Greyed out when there's nothing to start."/>
+                    <Button Content="Stop all" Command="{Binding StopAll}" Margin="6,0,0,0" ToolTipService.ShowOnDisabled="True"
+                            ToolTip="Stop every service (Shift+F5). Greyed out when nothing is running."/>
+                    <Button Content="Restart all" Command="{Binding RestartAll}" Margin="6,0,0,0" ToolTipService.ShowOnDisabled="True"
+                            ToolTip="Restart every running service (Ctrl+Shift+F5). Greyed out when nothing is running."/>
                     <Button Content="Edit" Command="{Binding EditProject}" Margin="6,0,0,0" ToolTipService.ShowOnDisabled="True"
                             ToolTip="Edit the project's settings and services. Stop the project first."/>
                     <Button Content="Environment" Command="{Binding EditEnv}" Margin="6,0,0,0" ToolTip="Edit environment variables"/>
-                    <Button x:Name="MoreButton" Style="{StaticResource Icon}" Content="&#xE712;" Margin="6,0,0,0" ToolTip="More" Click="More_Click">
+                    <Button x:Name="MoreButton" Style="{StaticResource Icon}" Content="&#xE712;" Margin="6,0,0,0" ToolTip="More" AutomationProperties.Name="More" Click="More_Click">
                         <Button.ContextMenu>
                             <ContextMenu>
+                                <MenuItem Header="Start when Dev Runner opens" IsCheckable="True" IsChecked="{Binding AutoStart}"/>
+                                <MenuItem Header="Clean rebuild" Command="{Binding CleanRebuild}"
+                                          Visibility="{Binding IsManaged, Converter={StaticResource Vis}}"/>
+                                <Separator/>
                                 <MenuItem Header="Edit project…" Command="{Binding EditProject}"/>
                                 <MenuItem Header="Rename…" Command="{Binding Rename}"/>
                                 <MenuItem Header="Open project folder" Command="{Binding OpenFolder}"/>
@@ -187,7 +192,10 @@
                                               ToolTip="Enabled on this machine. Off means Start all skips it until you turn it back on (it's saved). To stop it just for now, use Stop."/>
                                 </Grid>
                                 <TextBlock Margin="17,2,0,0" FontSize="12" Text="{Binding StateText}" Foreground="{Binding StateBrush}"/>
-                                <Grid Margin="0,10,0,0" ToolTip="{Binding ProcessTip}">
+                                <Grid Margin="0,10,0,0">
+                                    <Grid.ToolTip>
+                                        <TextBlock Text="{Binding ProcessTip}" FontFamily="{StaticResource Mono}" FontSize="12"/>
+                                    </Grid.ToolTip>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*"/>
                                         <ColumnDefinition Width="Auto"/>
@@ -207,22 +215,23 @@
                                 <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
                                     <Button Command="{Binding StartStop}" Padding="12,3">
                                         <Button.Style>
-                                            <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                                            <Style TargetType="Button" BasedOn="{StaticResource Primary}">
                                                 <Setter Property="Content" Value="Start"/>
                                                 <Style.Triggers>
                                                     <DataTrigger Binding="{Binding IsActive}" Value="True">
                                                         <Setter Property="Content" Value="Stop"/>
-                                                        <Setter Property="Foreground" Value="{StaticResource Bad}"/>
-                                                        <Setter Property="BorderBrush" Value="{StaticResource Bad}"/>
-                                                        <Setter Property="Background" Value="Transparent"/>
+                                                        <Setter Property="Background" Value="{StaticResource Card}"/>
+                                                        <Setter Property="BorderBrush" Value="{StaticResource Border}"/>
                                                     </DataTrigger>
                                                 </Style.Triggers>
                                             </Style>
                                         </Button.Style>
                                     </Button>
-                                    <Button Content="Restart" Command="{Binding Restart}" Padding="10,3" Margin="6,0,0,0"/>
-                                    <Button Content="Browser" Command="{Binding OpenUrl}" Padding="7,3" Margin="6,0,0,0" ToolTip="Open in browser"/>
-                                    <Button Content="Log" Command="{Binding OpenLog}" Padding="7,3" Margin="4,0,0,0" ToolTip="Open this run's log file"/>
+                                    <Button Content="Restart" Command="{Binding Restart}" Padding="10,3" Margin="6,0,0,0" ToolTipService.ShowOnDisabled="True"
+                                            ToolTip="Restart this service. Greyed out while it's stopped."/>
+                                    <Button Content="Browser" Command="{Binding OpenUrl}" Padding="7,3" Margin="6,0,0,0" ToolTipService.ShowOnDisabled="True"
+                                            ToolTip="Open in the browser. Greyed out when the service has no port."/>
+                                    <Button Content="Log" Command="{Binding OpenLog}" Padding="7,3" Margin="4,0,0,0" ToolTip="Open this run's log in Dev Runner"/>
                                     <Button Content="Folder" Command="{Binding OpenFolder}" Padding="7,3" Margin="4,0,0,0" ToolTip="Open the service's folder"/>
                                 </StackPanel>
                             </StackPanel>
@@ -255,40 +264,10 @@
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>
-                    <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="0,0,10,0" VerticalAlignment="Center">
-                        <Button Style="{StaticResource Icon}" Content="&#xE8C8;" Click="CopyLog_Click" ToolTip="Copy the whole log"/>
-                        <Button Style="{StaticResource Icon}" Content="&#xE74B;" Click="Bottom_Click" ToolTip="Jump to the bottom"/>
-                        <Button Style="{StaticResource Icon}" Content="&#xE894;" Command="{Binding ClearLog}" ToolTip="Clear this view"/>
-                    </StackPanel>
+
                 </Grid>
-                <Grid>
-                <c:LogListBox x:Name="Log" ItemsSource="{Binding SelectedLog.Lines}" Background="{StaticResource LogBg}" BorderThickness="0"
-                              FontFamily="{StaticResource Mono}" FontSize="12" Padding="8,4"
-                              VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"
-                              VirtualizingPanel.ScrollUnit="Pixel" ItemContainerStyle="{StaticResource PlainItem}">
-                    <c:LogListBox.ItemTemplate>
-                        <DataTemplate>
-                            <TextBlock c:AnsiText.Line="{Binding}" Foreground="#D4D4D8" TextWrapping="NoWrap"/>
-                        </DataTemplate>
-                    </c:LogListBox.ItemTemplate>
-                </c:LogListBox>
-                <TextBlock Text="No output yet. Start a service to see its log here." Foreground="{StaticResource Faint}"
-                           HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False">
-                    <TextBlock.Style>
-                        <Style TargetType="TextBlock">
-                            <Setter Property="Visibility" Value="Collapsed"/>
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding SelectedLog.Lines.Count}" Value="0">
-                                    <Setter Property="Visibility" Value="Visible"/>
-                                </DataTrigger>
-                                <DataTrigger Binding="{Binding SelectedLog}" Value="{x:Null}">
-                                    <Setter Property="Visibility" Value="Visible"/>
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </TextBlock.Style>
-                </TextBlock>
-                </Grid>
+                <c:LogView x:Name="Log" Lines="{Binding SelectedLog.Lines}" ClearCommand="{Binding ClearLog}"
+                           EmptyText="No output yet. Start a service to see its log here."/>
             </DockPanel>
         </Grid>
 
