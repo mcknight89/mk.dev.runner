@@ -1,0 +1,51 @@
+# Pushing a version tag makes a release the app's updater can find.
+#   v0.0.2          → a normal release (everyone gets it)
+#   v0.0.3-dev.1    → a Dev pre-release (only installs with "Get Dev builds" on)
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Version and channel from the tag
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}".TrimStart("v")
+          $dev = $version -match "-dev"
+          "VERSION=$version" >> $env:GITHUB_ENV
+          "CHANNEL=$(if ($dev) { 'dev' } else { 'win' })" >> $env:GITHUB_ENV
+
+      - name: Build
+        run: dotnet publish src/mk.dev.runner.desktop -c Release -o publish -p:Version=${{ env.VERSION }}
+
+      - name: Pack
+        shell: pwsh
+        run: |
+          dotnet tool restore
+          # the previous release, so updates can be small (delta) downloads; none yet is fine
+          dotnet vpk download github --repoUrl https://github.com/${{ github.repository }} --channel $env:CHANNEL --token ${{ secrets.GITHUB_TOKEN }} --outputDir releases
+          if ($LASTEXITCODE -ne 0) { "No earlier release to build on (first release)." }
+          dotnet vpk pack --packId DevRunner --packVersion $env:VERSION --packDir publish --mainExe DevRunner.Desktop.exe `
+            --packTitle "Dev Runner" --packAuthors "Mike Knights" --channel $env:CHANNEL --outputDir releases
+
+      - name: Publish to GitHub Releases
+        shell: pwsh
+        run: |
+          $upload = @("--repoUrl", "https://github.com/${{ github.repository }}", "--token", "${{ secrets.GITHUB_TOKEN }}",
+                      "--channel", $env:CHANNEL, "--outputDir", "releases", "--publish",
+                      "--releaseName", "Dev Runner $env:VERSION", "--tag", "${{ github.ref_name }}")
+          if ($env:CHANNEL -eq "dev") { $upload += "--pre" }
+          dotnet vpk upload github @upload

@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>devrunner</AssemblyName>
+    <RootNamespace>mk.dev.runner.cli</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\mk.dev.runner.core\mk.dev.runner.core.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,66 @@
+using System.Windows;
+using mk.dev.runner.core;
+using mk.dev.runner.desktop.ViewModels;
+
+namespace mk.dev.runner.desktop.Views;
+
+public partial class SettingsWindow : Window
+{
+    readonly MainViewModel _vm;
+
+    public SettingsWindow(MainViewModel vm)
+    {
+        InitializeComponent();
+        _vm = vm;
+        var s = vm.Settings;
+        StartWithWindows.IsChecked = s.StartWithWindows;
+        StartMinimized.IsChecked = s.StartMinimized;
+        CloseToTray.IsChecked = s.CloseToTray;
+        Notifications.IsChecked = s.Notifications;
+        CheckForUpdates.IsChecked = s.CheckForUpdates;
+        DevChannel.IsChecked = s.UpdateChannel == "dev";
+        Where.Text = $"Saved in {AppSettings.FilePath}";
+
+        var u = vm.Updates;
+        Version.Text = $"Version {u.CurrentVersion}" + (u.IsInstalled ? "" : " (not installed)");
+        CheckNow.IsEnabled = u.IsInstalled;
+        UpdateStatus.Text = u.Status;
+        u.PropertyChanged += OnUpdates;
+        Closed += (_, _) => u.PropertyChanged -= OnUpdates;
+    }
+
+    void OnUpdates(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        UpdateStatus.Text = _vm.Updates.Status;
+        CheckNow.IsEnabled = _vm.Updates.IsInstalled && !_vm.Updates.Busy;
+    }
+
+    async void CheckNow_Click(object sender, RoutedEventArgs e)
+    {
+        ApplyUpdateChoices();
+        await _vm.Updates.CheckAsync(manual: true);
+    }
+
+    /// <summary>The channel and check choices take effect straight away (Check now uses them).</summary>
+    void ApplyUpdateChoices()
+    {
+        var s = _vm.Settings;
+        var channel = DevChannel.IsChecked == true ? "dev" : "stable";
+        if (channel != s.UpdateChannel) { s.UpdateChannel = channel; _vm.Updates.ChannelChanged(); }
+        s.CheckForUpdates = CheckForUpdates.IsChecked == true;
+    }
+
+    void Save_Click(object sender, RoutedEventArgs e)
+    {
+        var s = _vm.Settings;
+        s.StartWithWindows = StartWithWindows.IsChecked == true;
+        s.StartMinimized = StartMinimized.IsChecked == true;
+        s.CloseToTray = CloseToTray.IsChecked == true;
+        s.Notifications = Notifications.IsChecked == true;
+        ApplyUpdateChoices();
+        try { StartupRegistration.Apply(s.StartWithWindows); }
+        catch (Exception ex) { MessageBox.Show(this, ex.Message, "Couldn't change Start with Windows"); }
+        _vm.SaveSettings();
+        Close();
+    }
+}

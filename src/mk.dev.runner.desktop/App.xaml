@@ -1,0 +1,17 @@
+<Application x:Class="mk.dev.runner.desktop.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:c="clr-namespace:mk.dev.runner.desktop.Controls"
+             ShutdownMode="OnExplicitShutdown">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="Theme.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+            <c:BoolToVisibility x:Key="Vis"/>
+            <c:BoolToVisibility x:Key="NotVis" Invert="True"/>
+            <c:HexToBrush x:Key="HexBrush"/>
+            <c:ColorNameToBrush x:Key="ColorName"/>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>

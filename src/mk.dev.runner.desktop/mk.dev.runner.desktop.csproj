@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <AssemblyName>DevRunner.Desktop</AssemblyName>
+    <RootNamespace>mk.dev.runner.desktop</RootNamespace>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Product>Dev Runner</Product>
+    <AssemblyTitle>Dev Runner</AssemblyTitle>
+    <NoWarn>$(NoWarn);WFO0003</NoWarn>
+    <StartupObject>mk.dev.runner.desktop.App</StartupObject>
+  </PropertyGroup>
+
+  <!-- App has its own Main (Velopack has to run before WPF starts) -->
+  <ItemGroup>
+    <ApplicationDefinition Remove="App.xaml" />
+    <Page Include="App.xaml" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+    <Using Include="System.IO" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\mk.dev.runner.core\mk.dev.runner.core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Velopack" Version="1.2.161" />
+  </ItemGroup>
+
+</Project>

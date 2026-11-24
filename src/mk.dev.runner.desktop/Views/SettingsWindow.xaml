@@ -1,0 +1,43 @@
+<Window x:Class="mk.dev.runner.desktop.Views.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Settings" Width="460" SizeToContent="Height" ResizeMode="NoResize"
+        Style="{StaticResource DarkWindow}" WindowStartupLocation="CenterOwner" ShowInTaskbar="False">
+    <StackPanel Margin="20">
+        <TextBlock Text="Settings" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,16"/>
+
+        <CheckBox x:Name="StartWithWindows" Style="{StaticResource Switch}" Content="Start with Windows"/>
+        <TextBlock Text="Runs in the notification area when you sign in. Projects marked Auto-start start too."
+                   Foreground="{StaticResource Faint}" FontSize="11.5" Margin="38,2,0,14" TextWrapping="Wrap"/>
+
+        <CheckBox x:Name="StartMinimized" Style="{StaticResource Switch}" Content="Start hidden in the notification area"/>
+        <TextBlock Text="When started with Windows, don't open the window."
+                   Foreground="{StaticResource Faint}" FontSize="11.5" Margin="38,2,0,14" TextWrapping="Wrap"/>
+
+        <CheckBox x:Name="CloseToTray" Style="{StaticResource Switch}" Content="Close and minimise to the notification area"/>
+        <TextBlock Text="Services keep running. Exit from the tray icon's menu to stop everything."
+                   Foreground="{StaticResource Faint}" FontSize="11.5" Margin="38,2,0,14" TextWrapping="Wrap"/>
+
+        <CheckBox x:Name="Notifications" Style="{StaticResource Switch}" Content="Pop up when a service crashes or a build fails"/>
+
+        <TextBlock Text="Updates" FontSize="15" FontWeight="SemiBold" Margin="0,22,0,10"/>
+        <TextBlock x:Name="Version" Foreground="{StaticResource Muted}"/>
+        <CheckBox x:Name="CheckForUpdates" Style="{StaticResource Switch}" Content="Check for updates" Margin="0,10,0,0"/>
+        <TextBlock Text="When there's a new version, an Update button shows in the app. Nothing installs until you click it."
+                   Foreground="{StaticResource Faint}" FontSize="11.5" Margin="38,2,0,10" TextWrapping="Wrap"/>
+        <CheckBox x:Name="DevChannel" Style="{StaticResource Switch}" Content="Get Dev builds (test versions)"/>
+        <TextBlock Text="Off: normal releases only. On: also the test builds that come before them."
+                   Foreground="{StaticResource Faint}" FontSize="11.5" Margin="38,2,0,10" TextWrapping="Wrap"/>
+        <StackPanel Orientation="Horizontal">
+            <Button x:Name="CheckNow" Content="Check now" Click="CheckNow_Click" Padding="12,4"/>
+            <TextBlock x:Name="UpdateStatus" Foreground="{StaticResource Muted}" Margin="12,0,0,0" VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="300"/>
+        </StackPanel>
+
+        <TextBlock x:Name="Where" Foreground="{StaticResource Faint}" FontSize="11" Margin="0,20,0,0" TextWrapping="Wrap"/>
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">
+            <Button Content="Cancel" IsCancel="True"/>
+            <Button Content="Save" Style="{StaticResource Primary}" Click="Save_Click" Margin="8,0,0,0" Padding="18,5" IsDefault="True"/>
+        </StackPanel>
+    </StackPanel>
+</Window>
