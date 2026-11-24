@@ -1,0 +1,43 @@
+name: Bug report
+description: Something in Dev Runner doesn't work as it should
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Issues are public, so check what you paste for passwords, keys and connection strings.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to make it happen again
+      placeholder: |
+        1. Add a project with an npm and a dotnet service
+        2. Click Start all
+        3. ...
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Filled in when you use Report a bug in the app (Settings, or the tray menu).
+      placeholder: 0.0.2 on Windows 10.0.26100
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: The end of the service's log. In the app, Copy all in the log panel, or Open logs folder in Settings.
+      render: text
+  - type: textarea
+    id: config
+    attributes:
+      label: Config (optional)
+      description: The project's .dev.json, if it matters. Remove anything private first.
+      render: json

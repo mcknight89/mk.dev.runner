@@ -81,5 +81,16 @@ namespace mk.dev.runner.desktop.Views
         {
             Shell.Open(AppSettings.Dir);
         }
+
+        private void ReportBug_Click(object sender, RoutedEventArgs e)
+        {
+            BugReport.Open(_vm.Updates.CurrentVersion);
+        }
+
+        private void OpenLogs_Click(object sender, RoutedEventArgs e)
+        {
+            Directory.CreateDirectory(AppPaths.LogsRoot);
+            Shell.Open(AppPaths.LogsRoot);
+        }
     }
 }

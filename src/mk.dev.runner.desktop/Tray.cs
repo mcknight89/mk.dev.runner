@@ -84,6 +84,7 @@ namespace mk.dev.runner.desktop
                 m.Items.Add(item);
             }
             m.Items.Add(new ToolStripSeparator());
+            m.Items.Add("Report a bug…", null, (_, _) => BugReport.Open(_vm.Updates.CurrentVersion));
             m.Items.Add("Exit (stops everything)", null, (_, _) => _exit());
         }
 

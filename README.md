@@ -1,65 +1,47 @@
 # Dev Runner
 
-Runs a project's dev services (APIs, web apps, anything) from one place. It's dev.mjs rebuilt in C# as a desktop app that sits in the notification area, and it reads dev.mjs's config files too.
+**Start everything your project needs with one click.**
 
-## Getting it running
+Most projects need a few things running at once: a website, the server behind it, maybe a background job. Dev Runner runs them all from one window instead of a pile of terminals, and shows you what's running and what's broken.
 
-Run `build.cmd` for a copy you can run straight away: it puts `DevRunner.Desktop.exe` in `dist\`.
+![Dev Runner](docs/images/main.png)
 
-To install it, run `release.cmd 0.0.2`. That makes `releases\DevRunner-win-Setup.exe`, which installs Dev Runner into `%LocalAppData%\DevRunner` with Start menu and desktop shortcuts, and installs the .NET 10 Desktop Runtime if it's missing. Only an installed copy can update itself. `release.cmd 0.0.3-dev.1 dev` makes a Dev (test) build.
+- Start and stop everything with one button
+- See each part's memory, status and logs
+- Search the logs, or show only the errors
+- Crashed parts can restart by themselves
+- Closing Dev Runner closes everything it started
 
-To publish a release, push a version tag: `v0.0.2` makes a normal release, `v0.0.3-dev.1` a Dev pre-release. GitHub Actions builds it and puts it on GitHub Releases, where installed copies find it.
+## Install
 
-A copy that isn't installed (from `build.cmd` or the debug build) is the **DEV** copy: it says "Dev Runner DEV", has DEV stamped on its icon, and runs beside the installed one. It keeps its own project list (`%APPDATA%\mk.dev.runner.dev`), which starts with the `sample\` project in this repo: a small dotnet API, an npm web app, a worker, and a crashing service that's off by default.
+Download **DevRunner-win-Setup.exe** from the [latest release](https://github.com/mcknight89/mk.dev.runner/releases/latest) and run it. Windows 10 or 11.
 
-Add a project with **+ Add** and pick its folder; the `.dev.json` in its root says what to run. If a folder has no config, or more than one, the app asks you to pick the file (it can have any name) or offers to create `.dev.json`. **Import folder** adds every project in a folder's subfolders.
+## Get going
 
-**Edit** on a project changes its settings and services on screen: name, how dotnet services run, and each service's folder, type, port, colour and command. It saves to the project's config file. The project has to be stopped first.
+Click **+ Add**, choose your project's folder, then click **Start all**. If the project isn't set up yet, Dev Runner offers to do it. **Edit** changes what runs.
 
-## Updates
+![Editing a project](docs/images/editor.png)
 
-An installed copy checks GitHub Releases every few hours. When there's a newer version, an **Update to x.y.z** button shows in the sidebar and the tray menu; nothing installs until you click it. Updating stops the running services and they stay stopped. Settings → Updates has the version, Check now, and **Get Dev builds** to also get test versions.
+## Found a bug?
 
-The terminal version is parked in `old\` for now; it isn't built.
+Click **Report a bug** in Settings or the tray menu. Say what went wrong, and remove any passwords before you send it.
 
-## Where things live
+## For developers
 
-| What | Where | Committed? |
-|---|---|---|
-| The stack: services, types, ports, ready patterns | `.dev.json` in the project's root (or any name you pick); service `dir`s are relative to it | yes |
-| This machine's choices: which services are on, ports, local environment variables | `.devrunner\local.json` in the project's root (the folder ignores itself in git) | no |
-| Logs: one file per service, overwritten every run | `%TEMP%\mk.dev.runner\logs\<project>\` | no, never in the project |
-| The project list: a name and a folder each, plus auto-start | `%APPDATA%\mk.dev.runner\settings.json` | no |
+Runs dotnet (`watch`, `run` or managed builds), npm and any command. Each project has a `.dev.json` in its root:
 
-The name the app shows is set in the app (Rename), not in the config.
+```json
+{
+  "globals": { "dotnetMode": "watch" },
+  "services": [
+    { "key": "api", "name": "API", "type": "dotnet", "dir": "api", "defaultPort": 5180 },
+    { "key": "web", "name": "Web", "type": "npm", "dir": "web", "defaultPort": 5181 }
+  ]
+}
+```
 
-If `settings.json` can't be read, it's kept as `settings.broken-<time>.json` and you're told; it's never overwritten with an empty list.
+**[How .dev.json works](docs/dev-json.md)**: every field, what each type runs, ports, ready lines and dotnet modes.
 
-## Logs
+Build with `build.cmd`, make an installer with `release.cmd 0.0.2`, and push a `v*` tag to publish a release. The `sample\` folder has a project to try.
 
-Logs are temporary. Read them in the main window's log panel (a tab per service), or open a service's file from its card. Nothing is kept between runs.
-
-## The app
-
-There's a list of projects on the left. Each service gets a card showing its state, memory, CPU, a memory graph, and buttons for start/stop, restart, browser, log and folder. Logs are shown below the cards in colour.
-
-- **Environment** lists the `.env` files in the project root and each service's folder, so you can edit any of them (your apps read these themselves). Below them are the variables Dev Runner sets on each service's command, for all services or one. Local values stay on this machine (`.devrunner\local.json`); Shared values go in the config file, so they're committed. Drag the list into any order. Saving restarts only the services whose variables changed.
-- **Auto-start** on a project starts it when the app opens.
-- In **Settings** you can start the app with Windows, start hidden in the tray, and close to the tray. The tray icon goes green when something is running and red when something has crashed. Right-click it to start or stop projects.
-- **Exit** from the tray menu stops everything.
-
-Only one copy of a project can run at a time (for dev.mjs configs, that includes old dev.mjs windows). If a service's port is already taken by something else, Dev Runner says what holds it and doesn't start the service; it never stops programs it didn't start. Every service runs inside a Windows job, so if the runner crashes or gets killed, its services go with it. You won't be left with orphaned node or dotnet processes.
-
-## Config extras
-
-Everything in a dev.mjs config still works. These are new and optional:
-
-- `"env": { "KEY": "value" }` at the top level or on a service
-- `"type": "command"` with `"cmd"` and `"args"` to run anything; `"script"` to pick the npm script (default `dev`)
-- `"url"` for the browser button, e.g. `"http://localhost:{port}/swagger"`
-- `"restartOnChange": [".env"]` in globals: files that restart the dotnet services when they change
-- `"root"` if the services aren't under the config's folder
-
-## Licence
-
-MIT, see [LICENSE](LICENSE).
+MIT licence.
