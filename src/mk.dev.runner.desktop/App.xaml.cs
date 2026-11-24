@@ -23,7 +23,6 @@ public partial class App : Application
         VelopackApp.Build()
             .OnBeforeUninstallFastCallback(_ => { try { StartupRegistration.Apply(false); } catch { } })
             .OnRestarted(_ => _restartedAfterUpdate = true)
-            .OnFirstRun(_ => Updates.Updater.JustInstalled = true)
             .Run();
         var app = new App();
         app.InitializeComponent();

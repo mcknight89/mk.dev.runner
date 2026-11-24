@@ -20,8 +20,8 @@ public sealed class AppSettings
     /// <summary>The "still running in the tray" tip has been shown once (closing with nothing running).</summary>
     public bool TrayHintShown { get; set; }
 
-    /// <summary>Updates: "stable" (normal releases) or "dev" (pre-releases too).</summary>
-    public string UpdateChannel { get; set; } = "stable";
+    /// <summary>Updates: "stable" (normal releases) or "dev" (pre-releases too). Null until you choose: then a Dev build follows Dev releases.</summary>
+    public string? UpdateChannel { get; set; }
 
     /// <summary>Check GitHub for a newer version in the background (it's only shown; nothing installs by itself).</summary>
     public bool CheckForUpdates { get; set; } = true;

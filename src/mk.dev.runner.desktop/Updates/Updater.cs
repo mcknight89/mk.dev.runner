@@ -14,14 +14,11 @@ namespace mk.dev.runner.desktop.Updates;
 /// </summary>
 public sealed class Updater : Observable
 {
-    /// <summary>The GitHub repo releases come from. Not created yet.</summary>
+    /// <summary>The GitHub repo releases come from.</summary>
     public const string RepoUrl = "https://github.com/mcknight89/mk.dev.runner";
 
     const string DevChannel = "dev";
     const string StableChannel = "win";   // Velopack's default channel name on Windows
-
-    /// <summary>Set by Velopack's first-run hook (in App.Main): the app has just been installed.</summary>
-    public static bool JustInstalled { get; set; }
     static readonly TimeSpan CheckEvery = TimeSpan.FromHours(6);
 
     readonly AppSettings _settings;
@@ -31,17 +28,7 @@ public sealed class Updater : Observable
     public Updater(AppSettings settings)
     {
         _settings = settings;
-        try
-        {
-            var plain = new UpdateManager(new GithubSource(RepoUrl, null, false));
-            IsInstalled = plain.IsInstalled;
-            // installed from a Dev build (its version has -dev in it, e.g. 0.0.1-dev.1): start with Dev updates on
-            if (IsInstalled && JustInstalled && plain.CurrentVersion?.ToString().Contains("-dev") == true && _settings.UpdateChannel != DevChannel)
-            {
-                _settings.UpdateChannel = DevChannel;
-                try { _settings.Save(); } catch { }
-            }
-        }
+        try { IsInstalled = new UpdateManager(new GithubSource(RepoUrl, null, false)).IsInstalled; }
         catch { IsInstalled = false; }
         CurrentVersion = InstalledVersion() ?? AssemblyVersion();
         Status = IsInstalled ? "" : "Updates work once Dev Runner is installed with its Setup.exe.";
@@ -50,6 +37,9 @@ public sealed class Updater : Observable
     }
 
     public bool IsInstalled { get; }
+
+    /// <summary>Dev updates: when chosen in Settings, or (nothing chosen yet) when this copy is itself a Dev build.</summary>
+    public bool WantsDev => _settings.UpdateChannel is { } chosen ? chosen == DevChannel : CurrentVersion.Contains("-dev");
     public string CurrentVersion { get; }
 
     string _status = "";
@@ -75,7 +65,7 @@ public sealed class Updater : Observable
 
     UpdateManager Manager()
     {
-        bool dev = _settings.UpdateChannel == DevChannel;
+        bool dev = WantsDev;
         var source = new GithubSource(RepoUrl, accessToken: null, prerelease: dev);
         // each setting asks for its channel by name, so switching either way works (and Dev → Stable may go down a version)
         var options = new UpdateOptions { ExplicitChannel = dev ? DevChannel : StableChannel, AllowVersionDowngrade = true };

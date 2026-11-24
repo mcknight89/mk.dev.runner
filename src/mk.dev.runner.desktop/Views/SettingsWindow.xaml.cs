@@ -18,7 +18,7 @@ public partial class SettingsWindow : Window
         CloseToTray.IsChecked = s.CloseToTray;
         Notifications.IsChecked = s.Notifications;
         CheckForUpdates.IsChecked = s.CheckForUpdates;
-        DevChannel.IsChecked = s.UpdateChannel == "dev";
+        DevChannel.IsChecked = vm.Updates.WantsDev;
         Where.Text = $"Saved in {AppSettings.FilePath}";
 
         var u = vm.Updates;
@@ -46,7 +46,7 @@ public partial class SettingsWindow : Window
     {
         var s = _vm.Settings;
         var channel = DevChannel.IsChecked == true ? "dev" : "stable";
-        if (channel != s.UpdateChannel) { s.UpdateChannel = channel; _vm.Updates.ChannelChanged(); }
+        if (channel != (_vm.Updates.WantsDev ? "dev" : "stable")) { s.UpdateChannel = channel; _vm.Updates.ChannelChanged(); }
         s.CheckForUpdates = CheckForUpdates.IsChecked == true;
     }
 
