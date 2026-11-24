@@ -11,6 +11,7 @@
     <AssemblyTitle>Dev Runner</AssemblyTitle>
     <NoWarn>$(NoWarn);WFO0003</NoWarn>
     <StartupObject>mk.dev.runner.desktop.App</StartupObject>
+    <ApplicationIcon>app.ico</ApplicationIcon>
   </PropertyGroup>
 
   <!-- App has its own Main (Velopack has to run before WPF starts) -->

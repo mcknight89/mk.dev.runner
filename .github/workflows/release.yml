@@ -39,7 +39,7 @@ jobs:
           dotnet vpk download github --repoUrl https://github.com/${{ github.repository }} --channel $env:CHANNEL --token ${{ secrets.GITHUB_TOKEN }} --outputDir releases
           if ($LASTEXITCODE -ne 0) { "No earlier release to build on (first release)." }
           dotnet vpk pack --packId DevRunner --packVersion $env:VERSION --packDir publish --mainExe DevRunner.Desktop.exe `
-            --packTitle "Dev Runner" --packAuthors "Mike Knights" --channel $env:CHANNEL --outputDir releases
+            --packTitle "Dev Runner" --packAuthors "Mike Knights" --icon src/mk.dev.runner.desktop/app.ico --channel $env:CHANNEL --outputDir releases
 
       - name: Publish to GitHub Releases
         shell: pwsh
