@@ -244,13 +244,12 @@ namespace mk.dev.runner.core
                     s.Fails = 0;
                     s.Stopped = false;
                     s.State = IsEnabled(s) ? ServiceState.Stopped : ServiceState.Disabled;
+                    if (Project.LocalProblem != null)
+                        s.Logs.Add($"[91m[runner] {Project.LocalProblem}[0m");
                 }
                 if (IsManaged)
                     BuildLog.OpenFile(BuildLogFile, $"build ({Project.Name}): session {stamp}");
                 BuildState = BuildState.Idle;
-
-                KillLeftovers();
-                KillGhosts();
 
                 SessionActive = true;
                 StartEnvWatchers();
@@ -341,9 +340,6 @@ namespace mk.dev.runner.core
                 s.ClearHistory();
             }
 
-            KillLeftovers();
-            KillGhosts();
-
             foreach (var s in _services) s.Logs.CloseFile();
             BuildLog.CloseFile();
             BuildState = BuildState.Idle;
@@ -376,31 +372,33 @@ namespace mk.dev.runner.core
             _services.Zip(Project.Config.Services).All(z => z.First.Key.Equals(z.Second.Key, StringComparison.OrdinalIgnoreCase));
         }
 
-        private void FreePort(int? port, ServiceRunner? owner)
+        private string? PortHolder(int? port)
         {
             if (port is not > 0)
-                return;
-            var (killed, failed) = Cleanup.FreePort(port.Value);
-            var log = owner?.Logs ?? BuildLog;
-            if (killed.Count > 0)
-                log.Add($"\x1b[33m[runner] freed port {port}: killed {string.Join(", ", killed)}\x1b[0m");
-            if (failed.Count > 0)
-                log.Add($"\x1b[91m[runner] couldn't free port {port}: {string.Join(", ", failed)}\x1b[0m");
+                return null;
+            var until = DateTime.Now.AddSeconds(3);
+            while (true)
+            {
+                var pids = TcpListeners.PidsOnPort(port.Value).Where(x => x != Environment.ProcessId).ToList();
+                if (pids.Count == 0)
+                    return null;
+                if (DateTime.Now >= until)
+                    return string.Join(", ", pids.Select(ProcessName));
+                Thread.Sleep(250);
+            }
         }
 
-        private void KillLeftovers()
+        private static string ProcessName(int pid)
         {
-            foreach (var s in _services) FreePort(PortOf(s), null);
-        }
-
-        private void KillGhosts()
-        {
-            var dirs = _services.Where(s => s.Config.IsDotnet).Select(s => Project.ServiceDir(s.Config));
-            var n = Cleanup.KillGhosts(dirs, Project.RootDir);
-            if (n < 0)
-                BuildLog.Add("\x1b[91m[runner] couldn't check for stray dotnet processes (Windows didn't answer)\x1b[0m");
-            if (n > 0)
-                BuildLog.Add($"\x1b[33m[runner] swept {n} stray dotnet process(es)\x1b[0m");
+            try
+            {
+                using var p = Process.GetProcessById(pid);
+                return $"{p.ProcessName} ({pid})";
+            }
+            catch (ArgumentException)
+            {
+                return $"PID {pid}";
+            }
         }
 
         private static void KillLogged(ServiceRunner s, ServiceProcess sp, string reason, bool wait)

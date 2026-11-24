@@ -47,6 +47,8 @@ namespace mk.dev.runner.core
         private JsonObject _cfg = new();
         private JsonObject _local = new();
 
+        public string? LocalProblem { get; private set; }
+
         [GeneratedRegex(@"^dev\.(.+)\.config\.json$", RegexOptions.IgnoreCase)]
         private static partial Regex DevConfigName();
 
@@ -117,8 +119,13 @@ namespace mk.dev.runner.core
         public void Reload()
         {
             _cfg = Json.ReadObject(ConfigPath, missingIsEmpty: false);
+            LocalProblem = null;
             try { _local = Json.ReadObject(LocalPath, missingIsEmpty: true); }
-            catch { _local = new JsonObject(); }
+            catch (Exception e)
+            {
+                _local = new JsonObject();
+                LocalProblem = $"{Path.GetFileName(LocalPath)} can't be read ({e.Message}). This machine's settings are ignored until it's fixed, and nothing will be saved over it.";
+            }
 
             var merged = (JsonObject)_cfg.DeepClone();
             if (_local["globals"] is JsonObject lg)
@@ -249,6 +256,8 @@ namespace mk.dev.runner.core
 
         private void SaveLocal()
         {
+            if (LocalProblem != null)
+                throw new InvalidOperationException(LocalProblem);
             if (_local["services"] is JsonObject svcs)
             {
                 foreach (var k in svcs.Where(kv => kv.Value is JsonObject o && o.Count == 0).Select(kv => kv.Key).ToList())

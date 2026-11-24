@@ -21,7 +21,15 @@ namespace mk.dev.runner.core
             RaiseChanged();
 
             var port = PortOf(s);
-            FreePort(port, s);
+            var holder = PortHolder(port);
+            if (holder != null)
+            {
+                s.State = ServiceState.Crashed;
+                s.Logs.Add($"[91m[runner] port {port} is in use by {holder}. Stop it, then start {s.Name} again.[0m");
+                Notice?.Invoke(new RunnerNotice(Project.Name, s.Name, $"port {port} is in use by {holder}", true));
+                RaiseChanged();
+                return;
+            }
 
             var dir = Project.ServiceDir(s.Config);
             if (!Directory.Exists(dir))
@@ -189,7 +197,7 @@ namespace mk.dev.runner.core
                 var ran = DateTime.Now - sp.StartedAt;
                 s.Fails = ran.TotalMilliseconds < 8000 ? s.Fails + 1 : 0;
                 int max = Math.Max(1, g.MaxRetries);
-                if (s.Fails >= max)
+                if (s.Fails > max)
                 {
                     s.State = ServiceState.Crashed;
                     s.Logs.Add($"\x1b[91m[runner] crashed {s.Fails}× — stopped. Fix it, then restart.\x1b[0m");
@@ -228,7 +236,6 @@ namespace mk.dev.runner.core
                 s.Proc = null;
             }
             s.Metrics = ServiceMetrics.Empty;
-            FreePort(PortOf(s), s);
         }
 
         private void RestartCore(ServiceRunner s)
@@ -257,7 +264,12 @@ namespace mk.dev.runner.core
         private void ToggleCore(ServiceRunner s)
         {
             var enable = !IsEnabled(s);
-            Project.SetEnabled(s.Config, enable);
+            try { Project.SetEnabled(s.Config, enable); }
+            catch (InvalidOperationException e)
+            {
+                s.Logs.Add($"[91m[runner] {e.Message}[0m");
+                return;
+            }
             if (enable)
             {
                 s.Fails = 0;

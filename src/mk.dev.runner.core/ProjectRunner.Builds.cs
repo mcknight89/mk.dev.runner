@@ -53,7 +53,6 @@ namespace mk.dev.runner.core
                     KillLogged(s, sp, "restart", wait: true);
                     s.Proc = null;
                 }
-                FreePort(PortOf(s), s);
                 s.State = ServiceState.Building;
             }
             BuildLog.Add($"\x1b[2m[build] stopped {affected.Count} service(s) to unlock DLLs, building{(restore ? "" : " --no-restore")}…\x1b[0m");

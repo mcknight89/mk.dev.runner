@@ -20,6 +20,6 @@ dotnet tool restore || exit /b 1
 if exist publish rmdir /s /q publish
 dotnet publish src\mk.dev.runner.desktop -c Release -o publish -p:Version=%VERSION% --nologo -v q || exit /b 1
 dotnet vpk pack --packId DevRunner --packVersion %VERSION% --packDir publish --mainExe DevRunner.Desktop.exe ^
-  --packTitle "Dev Runner" --packAuthors "Mike Knights" --icon srcmk.dev.runner.desktoppp.ico --channel %CHANNEL% --outputDir releases || exit /b 1
+  --packTitle "Dev Runner" --packAuthors "Mike Knights" --icon src\mk.dev.runner.desktop\app.ico --channel %CHANNEL% --outputDir releases || exit /b 1
 echo.
 echo Done: %~dp0releases

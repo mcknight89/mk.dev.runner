@@ -32,7 +32,9 @@ namespace mk.dev.runner.desktop.ViewModels
         {
             if (!File.Exists(AppSettings.FilePath))
                 return;
-            var fresh = AppSettings.Load();
+            var fresh = AppSettings.Load(moveBroken: false);
+            if (fresh.LoadProblem != null)
+                return;
             static string Key(ProjectEntry e) { try { return Path.GetFullPath(e.ConfigFile).ToLowerInvariant(); } catch { return e.ConfigFile.ToLowerInvariant(); } }
             var freshKeys = fresh.Projects.Select(Key).ToHashSet();
             var ourKeys = Settings.Projects.Select(Key).ToHashSet();

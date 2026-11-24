@@ -23,13 +23,15 @@ namespace mk.dev.runner.core
 
         [System.Text.Json.Serialization.JsonIgnore] public string? LoadProblem { get; private set; }
 
-        public static AppSettings Load()
+        private bool _unreadable;
+
+        public static AppSettings Load(bool moveBroken = true)
         {
             if (!File.Exists(FilePath))
                 return new();
             string text;
-            try { text = File.ReadAllText(FilePath); }
-            catch (Exception e) { return new() { LoadProblem = $"Couldn't read {FilePath}: {e.Message}" }; }
+            try { text = ReadWithRetry(); }
+            catch (Exception e) { return new() { LoadProblem = $"Couldn't read {FilePath}: {e.Message}", _unreadable = true }; }
             try
             {
                 var s = JsonSerializer.Deserialize<AppSettings>(text, Json.Options) ?? new();
@@ -38,6 +40,8 @@ namespace mk.dev.runner.core
             }
             catch (Exception e)
             {
+                if (!moveBroken)
+                    return new() { LoadProblem = $"settings.json couldn't be read ({e.Message})", _unreadable = true };
                 var aside = Path.Combine(Dir, $"settings.broken-{DateTime.Now:yyyyMMdd-HHmmss}.json");
                 try { File.Move(FilePath, aside); }
                 catch { aside = FilePath + " (left in place)"; }
@@ -45,12 +49,20 @@ namespace mk.dev.runner.core
             }
         }
 
+        private static string ReadWithRetry()
+        {
+            for (var i = 0; ; i++)
+            {
+                try { return File.ReadAllText(FilePath); }
+                catch (IOException) when (i < 4) { Thread.Sleep(200); }
+            }
+        }
+
         public void Save()
         {
-            Directory.CreateDirectory(Dir);
-            var tmp = FilePath + ".tmp";
-            File.WriteAllText(tmp, JsonSerializer.Serialize(this, Json.Options));
-            File.Move(tmp, FilePath, overwrite: true);
+            if (_unreadable)
+                throw new InvalidOperationException("settings.json couldn't be read when Dev Runner started, so it wasn't overwritten. Restart Dev Runner to load it.");
+            Json.WriteText(FilePath, JsonSerializer.Serialize(this, Json.Options));
         }
 
         public List<LoadedProject> LoadProjects()

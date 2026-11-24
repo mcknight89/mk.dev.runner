@@ -37,9 +37,14 @@ namespace mk.dev.runner.core.Config
 
         public static void WriteObject(string path, JsonObject obj)
         {
+            WriteText(path, obj.ToJsonString(Options) + Environment.NewLine);
+        }
+
+        public static void WriteText(string path, string text)
+        {
             Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
             var tmp = path + ".tmp";
-            File.WriteAllText(tmp, obj.ToJsonString(Options) + Environment.NewLine);
+            File.WriteAllText(tmp, text);
             File.Move(tmp, path, overwrite: true);
         }
 
