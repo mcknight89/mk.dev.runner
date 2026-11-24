@@ -26,22 +26,7 @@ namespace mk.dev.runner.desktop.Controls
             d.SetValue(LineProperty, v);
         }
 
-        private static readonly Dictionary<int, SolidColorBrush> Brushes = [];
-        private static readonly SolidColorBrush TimeBrush = Make(0x52525b);
-
-        private static SolidColorBrush Make(int rgb)
-        {
-            var b = new SolidColorBrush(Color.FromRgb((byte)(rgb >> 16), (byte)(rgb >> 8), (byte)rgb));
-            b.Freeze();
-            return b;
-        }
-
-        private static SolidColorBrush Get(int rgb)
-        {
-            if (!Brushes.TryGetValue(rgb, out var b))
-                Brushes[rgb] = b = Make(rgb);
-            return b;
-        }
+        private static readonly SolidColorBrush TimeBrush = Palette.Brush(0x52525b);
 
         private static void OnChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
         {
@@ -57,9 +42,9 @@ namespace mk.dev.runner.desktop.Controls
             {
                 var run = new Run(seg.Text);
                 if (seg.Fg is { } fg)
-                    run.Foreground = Get(fg);
+                    run.Foreground = Palette.Brush(fg);
                 if (seg.Bg is { } bg)
-                    run.Background = Get(bg);
+                    run.Background = Palette.Brush(bg);
                 if (seg.Bold)
                     run.FontWeight = FontWeights.SemiBold;
                 if (seg.Dim && seg.Fg == null)
@@ -156,9 +141,7 @@ namespace mk.dev.runner.desktop.Controls
     {
         public object Convert(object value, Type t, object p, CultureInfo c)
         {
-            return value is string s && ViewModels.ServiceViewModel.Palette.TryGetValue(s, out var hex)
-                ? new SolidColorBrush((Color)ColorConverter.ConvertFromString(hex))
-                : System.Windows.Media.Brushes.Gray;
+            return Palette.Brush(Palette.ServiceHex(value as string));
         }
 
         public object ConvertBack(object value, Type t, object p, CultureInfo c)
@@ -171,7 +154,7 @@ namespace mk.dev.runner.desktop.Controls
     {
         public object Convert(object value, Type t, object p, CultureInfo c)
         {
-            return value is string s ? new SolidColorBrush((Color)ColorConverter.ConvertFromString(s)) : System.Windows.Media.Brushes.Gray;
+            return value is string s ? Palette.Brush(s) : Palette.Brush(Palette.Faint);
         }
 
         public object ConvertBack(object value, Type t, object p, CultureInfo c)

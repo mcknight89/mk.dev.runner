@@ -7,22 +7,6 @@ namespace mk.dev.runner.desktop.ViewModels
 {
     public sealed class ServiceViewModel : Observable
     {
-        internal static readonly Dictionary<string, string> Palette = new(StringComparer.OrdinalIgnoreCase)
-        {
-            ["cyan"] = "#38bdf8",
-            ["green"] = "#4ade80",
-            ["magenta"] = "#e879f9",
-            ["yellow"] = "#facc15",
-            ["blue"] = "#60a5fa",
-            ["red"] = "#f87171",
-            ["white"] = "#e2e8f0",
-            ["orange"] = "#fb923c",
-            ["teal"] = "#2dd4bf",
-            ["purple"] = "#a78bfa",
-            ["pink"] = "#f472b6",
-            ["lime"] = "#a3e635",
-        };
-
         private readonly ProjectRunner _runner;
         private readonly ProjectViewModel _owner;
 
@@ -31,8 +15,8 @@ namespace mk.dev.runner.desktop.ViewModels
             _owner = owner;
             _runner = runner;
             S = service;
-            ColorHex = service.Config.Color is { } c && Palette.TryGetValue(c, out var hx) ? hx : "#a1a1aa";
-            ColorBrush = Freeze(new SolidColorBrush((Color)ColorConverter.ConvertFromString(ColorHex)));
+            ColorHex = Palette.ServiceHex(service.Config.Color);
+            ColorBrush = Palette.Brush(ColorHex);
             Log = new LogSourceViewModel(service.Name, () => service.Logs, ColorHex);
 
             StartStop = new Command(() =>
@@ -43,9 +27,9 @@ namespace mk.dev.runner.desktop.ViewModels
                     _owner.RunGuarded(() => _runner.StartService(S.Index));
             });
             Restart = new Command(() => _runner.RestartService(S.Index));
-            OpenUrl = new Command(() => { if (_runner.UrlOf(S) is { } u) Open(u); }, () => _runner.UrlOf(S) != null);
-            OpenLog = new Command(() => OpenInEditor(_runner.LogFileOf(S)));
-            OpenFolder = new Command(() => Open(_runner.Project.ServiceDir(S.Config)));
+            OpenUrl = new Command(() => { if (_runner.UrlOf(S) is { } u) Shell.Open(u); }, () => _runner.UrlOf(S) != null);
+            OpenLog = new Command(() => Shell.OpenInEditor(_runner.LogFileOf(S)));
+            OpenFolder = new Command(() => Shell.Open(_runner.Project.ServiceDir(S.Config)));
             Refresh();
         }
 
@@ -127,15 +111,15 @@ namespace mk.dev.runner.desktop.ViewModels
             if (_enabled != en) { _enabled = en; Raise(nameof(Enabled)); Raise(nameof(EnabledText)); }
             (StateText, StateBrush) = S.State switch
             {
-                ServiceState.Running => ("Running", B("#4ade80")),
-                ServiceState.Starting => ("Starting…", B("#38bdf8")),
-                ServiceState.Building => ("Building…", B("#c084fc")),
-                ServiceState.Restarting => ("Restarting…", B("#facc15")),
-                ServiceState.Retrying => ("Retrying…", B("#fb923c")),
-                ServiceState.Crashed => ("Crashed", B("#f87171")),
-                ServiceState.Failed => ("Build failed", B("#f87171")),
-                ServiceState.Disabled => ("Disabled", B("#52525b")),
-                _ => ("Stopped", B("#71717a")),
+                ServiceState.Running => ("Running", Palette.Brush(Palette.Good)),
+                ServiceState.Starting => ("Starting…", Palette.Brush(Palette.Info)),
+                ServiceState.Building => ("Building…", Palette.Brush(Palette.Building)),
+                ServiceState.Restarting => ("Restarting…", Palette.Brush(Palette.Warn)),
+                ServiceState.Retrying => ("Retrying…", Palette.Brush(Palette.Retry)),
+                ServiceState.Crashed => ("Crashed", Palette.Brush(Palette.Bad)),
+                ServiceState.Failed => ("Build failed", Palette.Brush(Palette.Bad)),
+                ServiceState.Disabled => ("Disabled", Palette.Brush(Palette.Off)),
+                _ => ("Stopped", Palette.Brush(Palette.Faint)),
             };
 
             var port = _runner.PortOf(S);
@@ -180,49 +164,6 @@ namespace mk.dev.runner.desktop.ViewModels
             pts.Freeze();
             Sparkline = pts;
             PeakText = $"peak {Format.Bytes(max)}";
-        }
-
-        private static readonly Dictionary<string, SolidColorBrush> BrushCache = [];
-        private static SolidColorBrush B(string hex)
-        {
-            if (!BrushCache.TryGetValue(hex, out var b))
-                BrushCache[hex] = b = Freeze(new SolidColorBrush((Color)ColorConverter.ConvertFromString(hex)));
-            return b;
-        }
-
-        private static T Freeze<T>(T f) where T : Freezable { f.Freeze(); return f; }
-
-        private static readonly Lazy<string?> VsCode = new(() =>
-        {
-            try
-            {
-                using var p = Process.Start(new ProcessStartInfo("where", "code.cmd")
-                { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true });
-                var first = p?.StandardOutput.ReadLine();
-                p?.WaitForExit(3000);
-                return string.IsNullOrWhiteSpace(first) ? null : first.Trim();
-            }
-            catch { return null; }
-        });
-
-        internal static void OpenInEditor(string file)
-        {
-            if (VsCode.Value is { } code)
-            {
-                try
-                {
-                    Process.Start(new ProcessStartInfo("cmd.exe", $"/d /c \"\"{code}\" \"{file}\"\"") { UseShellExecute = false, CreateNoWindow = true });
-                    return;
-                }
-                catch { }
-            }
-            Open(file);
-        }
-
-        internal static void Open(string target)
-        {
-            try { Process.Start(new ProcessStartInfo(target) { UseShellExecute = true }); }
-            catch (Exception e) { MessageBox.Show(e.Message, "Dev Runner"); }
         }
     }
 }

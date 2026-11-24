@@ -43,30 +43,30 @@ namespace mk.dev.runner.core
             var g = raw["globals"] as JsonObject ?? new JsonObject();
             var def = new ProjectDefinition
             {
-                DotnetMode = Str(g["dotnetMode"]) ?? "watch",
-                Solution = Str(g["solution"]),
-                AutoRetry = Bool(g["autoRetry"]) ?? false,
-                MaxRetries = Int(g["maxRetries"]) ?? 5,
-                AutoRebuild = Bool(g["autoRebuild"]) ?? true,
+                DotnetMode = Json.String(g["dotnetMode"]) ?? "watch",
+                Solution = Json.String(g["solution"]),
+                AutoRetry = Json.Bool(g["autoRetry"]) ?? false,
+                MaxRetries = Json.Int(g["maxRetries"]) ?? 5,
+                AutoRebuild = Json.Bool(g["autoRebuild"]) ?? true,
             };
             foreach (var s in (raw["services"] as JsonArray)?.OfType<JsonObject>() ?? [])
             {
-                var key = Str(s["key"]) ?? "";
+                var key = Json.String(s["key"]) ?? "";
                 def.Services.Add(new ServiceDefinition
                 {
                     OriginalKey = key,
                     Key = key,
-                    Name = Str(s["name"]) ?? key,
-                    Dir = Str(s["dir"]) ?? ".",
-                    Type = (Str(s["type"]) ?? "command").ToLowerInvariant(),
-                    Color = Str(s["color"]),
-                    Port = Int(s["defaultPort"]),
-                    Enabled = Bool(s["enabled"]) ?? true,
-                    ReadyPattern = Str(s["readyPattern"]),
-                    Cmd = Str(s["cmd"]),
-                    Args = (s["args"] as JsonArray) is { } a ? JoinArgs(a.Select(Str).OfType<string>()) : null,
-                    Script = Str(s["script"]),
-                    Url = Str(s["url"]),
+                    Name = Json.String(s["name"]) ?? key,
+                    Dir = Json.String(s["dir"]) ?? ".",
+                    Type = (Json.String(s["type"]) ?? "command").ToLowerInvariant(),
+                    Color = Json.String(s["color"]),
+                    Port = Json.Int(s["defaultPort"]),
+                    Enabled = Json.Bool(s["enabled"]) ?? true,
+                    ReadyPattern = Json.String(s["readyPattern"]),
+                    Cmd = Json.String(s["cmd"]),
+                    Args = (s["args"] as JsonArray) is { } a ? JoinArgs(a.Select(Json.String).OfType<string>()) : null,
+                    Script = Json.String(s["script"]),
+                    Url = Json.String(s["url"]),
                 });
             }
             return def;
@@ -116,7 +116,7 @@ namespace mk.dev.runner.core
             foreach (var s in def.Services)
             {
                 var node = s.OriginalKey == null ? null
-                    : old.FirstOrDefault(o => string.Equals(Str(o["key"]), s.OriginalKey, StringComparison.OrdinalIgnoreCase));
+                    : old.FirstOrDefault(o => string.Equals(Json.String(o["key"]), s.OriginalKey, StringComparison.OrdinalIgnoreCase));
                 var o = node != null ? (JsonObject)node.DeepClone() : new JsonObject();
                 o["key"] = s.Key.Trim();
                 o["name"] = string.IsNullOrWhiteSpace(s.Name) ? s.Key.Trim() : s.Name.Trim();
@@ -162,20 +162,8 @@ namespace mk.dev.runner.core
             else o[key] = value.Trim();
         }
 
-        private static string? Str(JsonNode? n)
-        {
-            return n is JsonValue v && v.TryGetValue<string>(out var s) ? s : null;
-        }
 
-        private static bool? Bool(JsonNode? n)
-        {
-            return n is JsonValue v && v.TryGetValue<bool>(out var b) ? b : null;
-        }
 
-        private static int? Int(JsonNode? n)
-        {
-            return n is JsonValue v && v.TryGetValue<int>(out var i) ? i : null;
-        }
 
         public static List<string> SplitArgs(string? line)
         {

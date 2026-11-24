@@ -1,0 +1,348 @@
+using System.Diagnostics;
+using System.Text;
+using System.Text.RegularExpressions;
+using mk.dev.runner.core.Config;
+using mk.dev.runner.core.Logs;
+using mk.dev.runner.core.Native;
+using mk.dev.runner.core.Runtime;
+
+namespace mk.dev.runner.core
+{
+    public sealed partial class ProjectRunner
+    {
+        private void StartCore(ServiceRunner s)
+        {
+            if (!IsEnabled(s))
+                return;
+            s.Stopped = false;
+            s.CancelTimers();
+            s.State = ServiceState.Starting;
+            s.Logs.Add($"\x1b[2m[runner] starting {s.Name}…\x1b[0m");
+            RaiseChanged();
+
+            var port = PortOf(s);
+            FreePort(port, s);
+
+            var dir = Project.ServiceDir(s.Config);
+            if (!Directory.Exists(dir))
+            {
+                s.State = ServiceState.Crashed;
+                s.Logs.Add($"\x1b[91m[runner] folder not found: {dir}\x1b[0m");
+                Notice?.Invoke(new RunnerNotice(Project.Name, s.Name, "folder not found", true));
+                RaiseChanged();
+                return;
+            }
+
+            string line;
+            try { line = CommandLine(s, port); }
+            catch (Exception e)
+            {
+                s.State = ServiceState.Crashed;
+                s.Logs.Add($"\x1b[91m[runner] {e.Message}\x1b[0m");
+                RaiseChanged();
+                return;
+            }
+
+            var psi = new ProcessStartInfo("cmd.exe")
+            {
+                Arguments = $"/d /s /c \"{line}\"",
+                WorkingDirectory = dir,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardInput = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                StandardOutputEncoding = Encoding.UTF8,
+                StandardErrorEncoding = Encoding.UTF8,
+            };
+            psi.Environment["FORCE_COLOR"] = "1";
+            psi.Environment["DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION"] = "1";
+            if (s.Config.IsDotnet)
+            {
+                foreach (var (k, v) in DotnetNoServers) psi.Environment[k] = v;
+                if (port is > 0 && !IsManaged) psi.Environment["ASPNETCORE_URLS"] = $"http://localhost:{port}";
+                psi.Environment["ASPNETCORE_ENVIRONMENT"] = "Development";
+            }
+            else if (port is > 0)
+                psi.Environment["PORT"] = port.ToString();
+
+            var userEnv = UserEnv(s);
+            foreach (var (k, v) in userEnv) psi.Environment[k] = v;
+
+            var (ready, fail) = Patterns(s.Config);
+            s.Ready = ready;
+            s.Fail = fail;
+
+            var job = new JobObject();
+            var p = new Process { StartInfo = psi, EnableRaisingEvents = true };
+            try { p.Start(); }
+            catch (Exception e)
+            {
+                job.Dispose();
+                s.State = ServiceState.Crashed;
+                s.Logs.Add($"\x1b[91m[runner] failed to start: {e.Message}\x1b[0m");
+                RaiseChanged();
+                return;
+            }
+            var sp = new ServiceProcess(p, job, job.TryAssign(p));
+            s.Proc = sp;
+            s.StartedEnv = userEnv;
+            try { p.StandardInput.Close(); } catch { }
+
+            p.OutputDataReceived += (_, e) => OnLine(s, sp, e.Data);
+            p.ErrorDataReceived += (_, e) => OnLine(s, sp, e.Data);
+            p.Exited += (_, _) => OnProcessExited(s, sp);
+            p.BeginOutputReadLine();
+            p.BeginErrorReadLine();
+            if (p.HasExited)
+                OnProcessExited(s, sp);
+
+            var timeout = TimeSpan.FromSeconds(Math.Max(5, Project.Config.Globals.StartTimeoutSec));
+            s.ReadyTimer = _q.After(timeout, () =>
+            {
+                if (s.Proc == sp && s.State is ServiceState.Starting or ServiceState.Restarting)
+                {
+                    s.State = ServiceState.Running;
+                    RaiseChanged();
+                }
+            });
+        }
+
+        private void OnLine(ServiceRunner s, ServiceProcess sp, string? line)
+        {
+            if (line == null)
+                return;
+            s.Logs.Add(line);
+            var plain = Ansi.Strip(line);
+            if (s.Fail != null && s.Fail.IsMatch(plain))
+            {
+                _q.Post(() =>
+                {
+                    if (s.Proc != sp || s.State == ServiceState.Failed)
+                        return;
+                    s.State = ServiceState.Failed;
+                    Notice?.Invoke(new RunnerNotice(Project.Name, s.Name, "build failed — waiting for a file change", true));
+                    RaiseChanged();
+                });
+            }
+            else if (s.State is ServiceState.Starting or ServiceState.Restarting or ServiceState.Failed
+                     && (s.Ready == null || s.Ready.IsMatch(plain)))
+            {
+                _q.Post(() =>
+                {
+                    if (s.Proc != sp || s.State is not (ServiceState.Starting or ServiceState.Restarting or ServiceState.Failed))
+                        return;
+                    s.State = ServiceState.Running;
+                    s.ReadyTimer?.Dispose(); s.ReadyTimer = null;
+                    RaiseChanged();
+                });
+            }
+        }
+
+        private void OnProcessExited(ServiceRunner s, ServiceProcess sp)
+        {
+            Task.Run(() =>
+            {
+                int code = -1;
+                try
+                {
+                    if (sp.InJob)
+                        sp.Job.Terminate();
+                    sp.P.WaitForExit(2000);
+                    code = sp.P.ExitCode;
+                }
+                catch { }
+                _q.Post(() => HandleExit(s, sp, code));
+            });
+        }
+
+        private void HandleExit(ServiceRunner s, ServiceProcess sp, int code)
+        {
+            if (sp.ExitHandled)
+                return;
+            sp.ExitHandled = true;
+            try { sp.Job.Dispose(); } catch { }
+            try { sp.P.Dispose(); } catch { }
+
+            bool current = s.Proc == sp;
+            if (current) { s.Proc = null; s.ReadyTimer?.Dispose(); s.ReadyTimer = null; s.Metrics = ServiceMetrics.Empty; }
+
+            if (sp.KillReason == "restart") { RaiseChanged(); return; }
+
+            if (sp.KillReason == "stop" || s.Stopped)
+            {
+                if (s.Proc == null && s.State is not (ServiceState.Building or ServiceState.Retrying or ServiceState.Starting))
+                    s.State = IsEnabled(s) ? ServiceState.Stopped : ServiceState.Disabled;
+                if (s.Proc == null && SessionActive)
+                    s.Logs.Add("\x1b[2m[runner] stopped.\x1b[0m");
+                RaiseChanged();
+                return;
+            }
+            if (!current)
+                return;
+
+            var g = Project.Config.Globals;
+            if (g.AutoRetry)
+            {
+                var ran = DateTime.Now - sp.StartedAt;
+                s.Fails = ran.TotalMilliseconds < 8000 ? s.Fails + 1 : 0;
+                int max = Math.Max(1, g.MaxRetries);
+                if (s.Fails >= max)
+                {
+                    s.State = ServiceState.Crashed;
+                    s.Logs.Add($"\x1b[91m[runner] crashed {s.Fails}× — stopped. Fix it, then restart.\x1b[0m");
+                    Notice?.Invoke(new RunnerNotice(Project.Name, s.Name, $"crashed {s.Fails} times — stopped", true));
+                }
+                else
+                {
+                    s.State = ServiceState.Retrying;
+                    var baseDelay = Math.Max(0.5, g.RetryDelaySec);
+                    var delay = s.Fails == 0 ? baseDelay : Math.Min(baseDelay * Math.Pow(2, s.Fails - 1), 30);
+                    s.Logs.Add($"\x1b[90m[runner] exited ({code}) — retry {Math.Max(1, s.Fails)}/{max} in {delay:0.#}s…\x1b[0m");
+                    s.RetryTimer = _q.After(TimeSpan.FromSeconds(delay), () =>
+                    {
+                        if (!s.Stopped && s.State == ServiceState.Retrying && SessionActive)
+                            StartCore(s);
+                    });
+                }
+            }
+            else
+            {
+                s.State = ServiceState.Crashed;
+                s.Logs.Add($"\x1b[91m[runner] exited ({code}) — stopped. Read the error above, then restart.\x1b[0m");
+                Notice?.Invoke(new RunnerNotice(Project.Name, s.Name, $"exited with code {code}", true));
+            }
+            RaiseChanged();
+        }
+
+        private void StopCore(ServiceRunner s)
+        {
+            s.Stopped = true;
+            s.CancelTimers();
+            s.State = IsEnabled(s) ? ServiceState.Stopped : ServiceState.Disabled;
+            if (s.Proc is { } sp) { sp.Kill("stop", wait: false); s.Proc = null; }
+            s.Metrics = ServiceMetrics.Empty;
+            FreePort(PortOf(s), s);
+        }
+
+        private void RestartCore(ServiceRunner s)
+        {
+            s.Fails = 0;
+            s.Stopped = false;
+            if (IsManaged && s.Config.IsDotnet)
+            {
+                s.Logs.Add("\x1b[2m[runner] rebuild + restart…\x1b[0m");
+                s.State = ServiceState.Building;
+                EnsureDepGraph();
+                RaiseChanged();
+                TriggerBuild([s.Index], false);
+                return;
+            }
+            s.Logs.Add("\x1b[2m[runner] restarting…\x1b[0m");
+            s.CancelTimers();
+            if (s.Proc is { } sp) { sp.Kill("restart", wait: true); s.Proc = null; }
+            StartCore(s);
+        }
+
+        private void ToggleCore(ServiceRunner s)
+        {
+            var enable = !IsEnabled(s);
+            Project.SetEnabled(s.Config, enable);
+            if (enable)
+            {
+                s.Fails = 0;
+                if (!SessionActive) { s.State = ServiceState.Stopped; RaiseChanged(); return; }
+                s.Stopped = false;
+                if (IsManaged && s.Config.IsDotnet)
+                {
+                    EnsureDepGraph();
+                    s.State = ServiceState.Building;
+                    RaiseChanged();
+                    TriggerBuild([s.Index], false);
+                }
+                else
+                    StartCore(s);
+            }
+            else
+            {
+                StopCore(s);
+                s.State = ServiceState.Disabled;
+                s.Logs.Add("\x1b[90m[runner] disabled.\x1b[0m");
+            }
+            RaiseChanged();
+        }
+
+        private Dictionary<string, string> UserEnv(ServiceRunner s)
+        {
+            var fresh = Project.Service(s.Key);
+            if (fresh != null)
+                s.Config = fresh;
+            return Project.EffectiveEnv(s.Config);
+        }
+
+        private static bool SameMap(Dictionary<string, string> a, Dictionary<string, string> b)
+        {
+            return a.Count == b.Count && a.All(kv => b.TryGetValue(kv.Key, out var v) && v == kv.Value);
+        }
+
+        private string CommandLine(ServiceRunner s, int? port)
+        {
+            var c = s.Config;
+            var g = Project.Config.Globals;
+            var args = new List<string>();
+            string exe;
+            if (c.IsNpm)
+            {
+                exe = "npm";
+                args.AddRange(["run", string.IsNullOrWhiteSpace(c.Script) ? "dev" : c.Script!]);
+                if (c.Args is { Count: > 0 }) { args.Add("--"); args.AddRange(c.Args); }
+            }
+            else if (c.IsDotnet)
+            {
+                exe = "dotnet";
+                var mode = g.DotnetMode.ToLowerInvariant();
+                args.AddRange(mode switch
+                {
+                    "managed" => ["run", "--no-build", "--no-restore"],
+                    "run" => ["run"],
+                    _ => ["watch", "--no-hot-reload"],
+                });
+                var extra = new List<string>();
+                if (mode == "managed" && port is > 0) extra.AddRange(["--urls", $"http://localhost:{port}"]);
+                if (c.Args is { Count: > 0 })
+                    extra.AddRange(c.Args);
+                if (extra.Count > 0) { args.Add("--"); args.AddRange(extra); }
+            }
+            else
+            {
+                exe = string.IsNullOrWhiteSpace(c.Cmd) ? throw new InvalidOperationException($"service '{c.Key}' has no \"cmd\".") : c.Cmd!;
+                if (c.Args != null)
+                    args.AddRange(c.Args);
+            }
+            return string.Join(' ', new[] { Quote(exe) }.Concat(args.Select(Quote)));
+        }
+
+        private static string Quote(string a)
+        {
+            if (a.Length == 0)
+                return "\"\"";
+            if (a.IndexOfAny([' ', '\t', '"', '&', '|', '<', '>', '^', '(', ')']) < 0)
+                return a;
+            return "\"" + a.Replace("\"", "\\\"") + "\"";
+        }
+
+        private static (Regex? ready, Regex? fail) Patterns(ServiceConfig c)
+        {
+            Regex? ready = null;
+            if (!string.IsNullOrWhiteSpace(c.ReadyPattern))
+            {
+                try { ready = new Regex(c.ReadyPattern!, RegexOptions.IgnoreCase); } catch { }
+            }
+            ready ??= c.IsNpm ? new Regex(@"ready in|- local:|started server|compiled|localhost:\d+", RegexOptions.IgnoreCase)
+                    : c.IsDotnet ? new Regex(@"now listening on|application started", RegexOptions.IgnoreCase)
+                    : null;
+            var fail = c.IsDotnet ? new Regex(@"waiting for a file to change|build failed", RegexOptions.IgnoreCase) : null;
+            return (ready, fail);
+        }
+    }
+}

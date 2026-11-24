@@ -161,16 +161,12 @@ namespace mk.dev.runner.core
 
         public bool IsEnabled(ServiceConfig svc)
         {
-            if (LocalService(svc.Key)?["enabled"] is JsonValue v && v.TryGetValue<bool>(out var b))
-                return b;
-            return svc.Enabled ?? true;
+            return Json.Bool(LocalService(svc.Key)?["enabled"]) ?? svc.Enabled ?? true;
         }
 
         public int? PortOf(ServiceConfig svc)
         {
-            if (LocalService(svc.Key)?["port"] is JsonValue v && v.TryGetValue<int>(out var p))
-                return p;
-            return svc.DefaultPort;
+            return Json.Int(LocalService(svc.Key)?["port"]) ?? svc.DefaultPort;
         }
 
         public string? UrlOf(ServiceConfig svc)

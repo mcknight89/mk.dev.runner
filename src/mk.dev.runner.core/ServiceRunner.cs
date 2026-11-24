@@ -1,3 +1,4 @@
+using mk.helpers;
 using System.Diagnostics;
 using System.Text.RegularExpressions;
 using mk.dev.runner.core.Config;
@@ -32,6 +33,7 @@ namespace mk.dev.runner.core
         public JobObject Job { get; }
         public bool InJob { get; }
         public string? KillReason { get; set; }
+        public bool ExitHandled { get; set; }
         public DateTime StartedAt { get; } = DateTime.Now;
         public TimeSpan LastCpu { get; set; }
         public DateTime LastSampleAt { get; set; } = DateTime.Now;
@@ -57,7 +59,6 @@ namespace mk.dev.runner.core
 
         private readonly object _historyGate = new();
         private readonly Queue<long> _memHistory = new();
-        private readonly Queue<double> _cpuHistory = new();
 
         internal ServiceRunner(int index, ServiceConfig config, int maxLines)
         {
@@ -94,25 +95,35 @@ namespace mk.dev.runner.core
             ReadyTimer?.Dispose(); ReadyTimer = null;
         }
 
-        internal void PushHistory(long mem, double cpu)
+        public int HistoryVersion { get; private set; }
+
+        internal void PushHistory(long mem)
         {
             lock (_historyGate)
             {
                 _memHistory.Enqueue(mem);
-                _cpuHistory.Enqueue(cpu);
-                while (_memHistory.Count > HistoryLength) _memHistory.Dequeue();
-                while (_cpuHistory.Count > HistoryLength) _cpuHistory.Dequeue();
+                while (_memHistory.Count > HistoryLength)
+                    _memHistory.Dequeue();
+                HistoryVersion++;
             }
         }
 
         internal void ClearHistory()
         {
-            lock (_historyGate) { _memHistory.Clear(); _cpuHistory.Clear(); }
+            lock (_historyGate)
+            {
+                _memHistory.Clear();
+                HistoryVersion++;
+            }
         }
 
-        public long[] MemoryHistory() { lock (_historyGate) return [.. _memHistory]; }
-
-        public double[] CpuHistory() { lock (_historyGate) return [.. _cpuHistory]; }
+        public long[] MemoryHistory()
+        {
+            lock (_historyGate)
+            {
+                return [.. _memHistory];
+            }
+        }
 
         public bool IsBusy => State is ServiceState.Starting or ServiceState.Building or ServiceState.Restarting or ServiceState.Retrying;
     }
@@ -121,24 +132,7 @@ namespace mk.dev.runner.core
     {
         public static string Bytes(long b)
         {
-            return b switch
-            {
-                <= 0 => "—",
-                < 1024L * 1024 => $"{b / 1024.0:0} KB",
-                < 1024L * 1024 * 1024 => $"{b / (1024.0 * 1024):0} MB",
-                _ => $"{b / (1024.0 * 1024 * 1024):0.0} GB",
-            };
-        }
-
-        public static string BytesShort(long b)
-        {
-            return b switch
-            {
-                <= 0 => "",
-                < 1024L * 1024 => $"{b / 1024.0:0}K",
-                < 1024L * 1024 * 1024 => $"{b / (1024.0 * 1024):0}M",
-                _ => $"{b / (1024.0 * 1024 * 1024):0.0}G",
-            };
+            return b <= 0 ? "—" : b.BytesToString();
         }
 
         public static string Duration(TimeSpan t)

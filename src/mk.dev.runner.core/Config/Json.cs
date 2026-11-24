@@ -80,6 +80,21 @@ namespace mk.dev.runner.core.Config
             return map;
         }
 
+        public static string? String(JsonNode? n)
+        {
+            return n is JsonValue v && v.TryGetValue<string>(out var s) ? s : null;
+        }
+
+        public static bool? Bool(JsonNode? n)
+        {
+            return n is JsonValue v && v.TryGetValue<bool>(out var b) ? b : null;
+        }
+
+        public static int? Int(JsonNode? n)
+        {
+            return n is JsonValue v && v.TryGetValue<int>(out var i) ? i : null;
+        }
+
         public static JsonObject FromStringMap(IEnumerable<KeyValuePair<string, string>> map)
         {
             var o = new JsonObject(NodeOptions);

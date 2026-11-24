@@ -5,7 +5,7 @@ using mk.dev.runner.core;
 
 namespace mk.dev.runner.desktop.ViewModels
 {
-    public sealed class ProjectViewModel : Observable, IDisposable
+    public sealed partial class ProjectViewModel : Observable, IDisposable
     {
         private readonly MainViewModel _main;
 
@@ -25,16 +25,16 @@ namespace mk.dev.runner.desktop.ViewModels
             RestartAll = new Command(() => Runner!.RestartAll(), () => Runner?.SessionActive == true);
             CleanRebuild = new Command(() => Runner!.CleanRebuild(), () => Runner?.IsManaged == true);
             EditEnv = new Command(() => _main.OpenEnvEditor(this), () => Runner != null);
-            OpenFolder = new Command(() => ServiceViewModel.Open(Runner?.Project.RootDir ?? Entry.Folder ?? Path.GetDirectoryName(Entry.ConfigFile)!));
-            EditConfig = new Command(() => ServiceViewModel.OpenInEditor(Entry.ConfigFile));
+            OpenFolder = new Command(() => Shell.Open(Runner?.Project.RootDir ?? Entry.Folder ?? Path.GetDirectoryName(Entry.ConfigFile)!));
+            EditConfig = new Command(() => Shell.OpenInEditor(Entry.ConfigFile));
             OpenLogs = new Command(() =>
             {
                 if (Runner == null)
                     return;
                 Directory.CreateDirectory(Runner.Project.LogsDir);
-                ServiceViewModel.Open(Runner.Project.LogsDir);
+                Shell.Open(Runner.Project.LogsDir);
             });
-            ViewBuildLog = new Command(() => { if (Runner is { } r) ServiceViewModel.OpenInEditor(r.BuildLogFile); },
+            ViewBuildLog = new Command(() => { if (Runner is { } r) Shell.OpenInEditor(r.BuildLogFile); },
                                        () => Runner?.IsManaged == true);
             Rename = new Command(DoRename);
             EditProject = new Command(DoEditProject, () => Runner != null);
@@ -164,96 +164,6 @@ namespace mk.dev.runner.desktop.ViewModels
             BuildServices();
         }
 
-        public void DoEditProject()
-        {
-            if (Runner == null)
-                return;
-            if (Runner.SessionActive)
-            {
-                MessageBox.Show(Application.Current.MainWindow, $"Stop {Name} first (Stop all), then edit it.", "Edit project",
-                    MessageBoxButton.OK, MessageBoxImage.Information);
-                return;
-            }
-            var w = new Views.ProjectEditorWindow(this) { Owner = Application.Current.MainWindow };
-            w.ShowDialog();
-            if (!w.Saved)
-                return;
-            try { Runner.ReloadProject(); }
-            catch (Exception e) { MessageBox.Show(e.Message, "Couldn't reload the project"); }
-            BuildServices();
-        }
-
-        public bool TryRename(string name)
-        {
-            if (_main.Projects.Any(p => p != this && string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase)))
-                return false;
-            Entry.Name = name;
-            Name = name;
-            Runner?.Project.SetDisplayName(name);
-            Raise(nameof(Name));
-            _main.SaveSettings();
-            return true;
-        }
-
-        private void DoRename()
-        {
-            var name = Views.TextPromptWindow.Ask(Application.Current.MainWindow, "Rename project",
-                "What the runner calls it. Only the list's name changes: nothing in the project's folder does.", Name);
-            if (name == null || name == Name)
-                return;
-            if (_main.Projects.Any(p => p != this && string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase)))
-            {
-                MessageBox.Show($"There's already a project called '{name}'.", "Rename project");
-                return;
-            }
-            Entry.Name = name;
-            Name = name;
-            Runner?.Project.SetDisplayName(name);
-            Raise(nameof(Name));
-            _main.SaveSettings();
-        }
-
-        private void ReloadConfig()
-        {
-            if (Runner == null) { Reattach(); return; }
-            try
-            {
-                if (!Runner.ReloadProject())
-                    MessageBox.Show("Stop the project before reloading its config.", "Dev Runner");
-            }
-            catch (Exception e) { MessageBox.Show(e.Message, "Couldn't reload config"); }
-        }
-
-        public void RunGuarded(Action action)
-        {
-            RunBackground(action, "Starting…");
-        }
-
-        private void RunBackground(Action action, string text)
-        {
-            _busy = true;
-            BusyText = text;
-            CommandManagerInvalidate();
-            Task.Run(() =>
-            {
-                try { action(); }
-                catch (Exception e)
-                {
-                    Application.Current.Dispatcher.BeginInvoke(() =>
-                        MessageBox.Show(Application.Current.MainWindow, e.Message, $"{Name} — couldn't start", MessageBoxButton.OK, MessageBoxImage.Warning));
-                }
-                finally
-                {
-                    Application.Current.Dispatcher.BeginInvoke(() => { _busy = false; BusyText = ""; CommandManagerInvalidate(); });
-                }
-            });
-        }
-
-        private static void CommandManagerInvalidate()
-        {
-            System.Windows.Input.CommandManager.InvalidateRequerySuggested();
-        }
-
         public void Refresh(bool pullLogs)
         {
             if (Runner == null)
@@ -273,10 +183,10 @@ namespace mk.dev.runner.desktop.ViewModels
             long mem = Runner.TotalWorkingSet;
             MemoryText = mem > 0 ? Format.Bytes(mem) : "";
 
-            if (!Runner.SessionActive) { StatusText = $"{Services.Count} service{(Services.Count == 1 ? "" : "s")} · stopped"; StatusBrush = Brush("#52525b"); }
-            else if (HasProblem) { StatusText = $"{running}/{total} running · problem"; StatusBrush = Brush("#f87171"); }
-            else if (busy) { StatusText = $"{running}/{total} running · starting"; StatusBrush = Brush("#38bdf8"); }
-            else { StatusText = $"{running}/{total} running"; StatusBrush = Brush(running > 0 ? "#4ade80" : "#52525b"); }
+            if (!Runner.SessionActive) { StatusText = $"{Services.Count} service{(Services.Count == 1 ? "" : "s")} · stopped"; StatusBrush = Palette.Brush(Palette.Off); }
+            else if (HasProblem) { StatusText = $"{running}/{total} running · problem"; StatusBrush = Palette.Brush(Palette.Bad); }
+            else if (busy) { StatusText = $"{running}/{total} running · starting"; StatusBrush = Palette.Brush(Palette.Info); }
+            else { StatusText = $"{running}/{total} running"; StatusBrush = Palette.Brush(running > 0 ? Palette.Good : Palette.Off); }
 
             BuildText = Runner.IsManaged ? Runner.BuildState switch
             {
@@ -285,18 +195,6 @@ namespace mk.dev.runner.desktop.ViewModels
                 BuildState.Failed => $"Build failed ({Runner.LastBuildErrors.Count})",
                 _ => "",
             } : "";
-        }
-
-        private static readonly Dictionary<string, SolidColorBrush> Cache = [];
-        private static SolidColorBrush Brush(string hex)
-        {
-            if (!Cache.TryGetValue(hex, out var b))
-            {
-                b = new SolidColorBrush((Color)ColorConverter.ConvertFromString(hex));
-                b.Freeze();
-                Cache[hex] = b;
-            }
-            return b;
         }
 
         public void Dispose()
