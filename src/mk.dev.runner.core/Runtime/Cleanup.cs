@@ -6,14 +6,15 @@ namespace mk.dev.runner.core.Runtime
 {
     internal static class Cleanup
     {
-        public static List<string> FreePort(int port, ICollection<int>? keep = null)
+        public static (List<string> killed, List<string> failed) FreePort(int port)
         {
             var killed = new List<string>();
+            var failed = new List<string>();
             if (port <= 0)
-                return killed;
+                return (killed, failed);
             foreach (var pid in TcpListeners.PidsOnPort(port))
             {
-                if (pid == Environment.ProcessId || keep?.Contains(pid) == true)
+                if (pid == Environment.ProcessId)
                     continue;
                 try
                 {
@@ -23,9 +24,15 @@ namespace mk.dev.runner.core.Runtime
                     p.WaitForExit(3000);
                     killed.Add($"{name} ({pid})");
                 }
-                catch { }
+                catch (ArgumentException)
+                {
+                }
+                catch (Exception e)
+                {
+                    failed.Add($"PID {pid}: {e.Message}");
+                }
             }
-            return killed;
+            return (killed, failed);
         }
 
         public static int KillGhosts(IEnumerable<string> dirs, string projectRoot)
@@ -65,7 +72,10 @@ namespace mk.dev.runner.core.Runtime
                     }
                 }
             }
-            catch { }
+            catch
+            {
+                return -1;
+            }
             return count;
         }
 

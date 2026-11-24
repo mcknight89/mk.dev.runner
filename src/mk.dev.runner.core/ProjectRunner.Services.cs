@@ -69,7 +69,9 @@ namespace mk.dev.runner.core
             var userEnv = UserEnv(s);
             foreach (var (k, v) in userEnv) psi.Environment[k] = v;
 
-            var (ready, fail) = Patterns(s.Config);
+            var (ready, fail, badPattern) = Patterns(s.Config);
+            if (badPattern != null)
+                s.Logs.Add($"\x1b[91m[runner] the ready pattern isn't valid ({badPattern}), using the usual one\x1b[0m");
             s.Ready = ready;
             s.Fail = fail;
 
@@ -220,7 +222,11 @@ namespace mk.dev.runner.core
             s.Stopped = true;
             s.CancelTimers();
             s.State = IsEnabled(s) ? ServiceState.Stopped : ServiceState.Disabled;
-            if (s.Proc is { } sp) { sp.Kill("stop", wait: false); s.Proc = null; }
+            if (s.Proc is { } sp)
+            {
+                KillLogged(s, sp, "stop", wait: false);
+                s.Proc = null;
+            }
             s.Metrics = ServiceMetrics.Empty;
             FreePort(PortOf(s), s);
         }
@@ -240,7 +246,11 @@ namespace mk.dev.runner.core
             }
             s.Logs.Add("\x1b[2m[runner] restarting…\x1b[0m");
             s.CancelTimers();
-            if (s.Proc is { } sp) { sp.Kill("restart", wait: true); s.Proc = null; }
+            if (s.Proc is { } sp)
+            {
+                KillLogged(s, sp, "restart", wait: true);
+                s.Proc = null;
+            }
             StartCore(s);
         }
 
@@ -331,18 +341,26 @@ namespace mk.dev.runner.core
             return "\"" + a.Replace("\"", "\\\"") + "\"";
         }
 
-        private static (Regex? ready, Regex? fail) Patterns(ServiceConfig c)
+        private static (Regex? ready, Regex? fail, string? badPattern) Patterns(ServiceConfig c)
         {
             Regex? ready = null;
+            string? badPattern = null;
             if (!string.IsNullOrWhiteSpace(c.ReadyPattern))
             {
-                try { ready = new Regex(c.ReadyPattern!, RegexOptions.IgnoreCase); } catch { }
+                try
+                {
+                    ready = new Regex(c.ReadyPattern!, RegexOptions.IgnoreCase);
+                }
+                catch (ArgumentException e)
+                {
+                    badPattern = e.Message;
+                }
             }
             ready ??= c.IsNpm ? new Regex(@"ready in|- local:|started server|compiled|localhost:\d+", RegexOptions.IgnoreCase)
                     : c.IsDotnet ? new Regex(@"now listening on|application started", RegexOptions.IgnoreCase)
                     : null;
             var fail = c.IsDotnet ? new Regex(@"waiting for a file to change|build failed", RegexOptions.IgnoreCase) : null;
-            return (ready, fail);
+            return (ready, fail, badPattern);
         }
     }
 }

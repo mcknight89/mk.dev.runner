@@ -48,7 +48,11 @@ namespace mk.dev.runner.core
             {
                 var s = _services[i];
                 s.CancelTimers();
-                if (s.Proc is { } sp) { sp.Kill("restart", wait: true); s.Proc = null; }
+                if (s.Proc is { } sp)
+                {
+                    KillLogged(s, sp, "restart", wait: true);
+                    s.Proc = null;
+                }
                 FreePort(PortOf(s), s);
                 s.State = ServiceState.Building;
             }

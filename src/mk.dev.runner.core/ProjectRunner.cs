@@ -327,7 +327,11 @@ namespace mk.dev.runner.core
             {
                 s.Stopped = true;
                 s.CancelTimers();
-                if (s.Proc is { } sp) { sp.Kill("stop", wait: true); s.Proc = null; }
+                if (s.Proc is { } sp)
+                {
+                    KillLogged(s, sp, "stop", wait: true);
+                    s.Proc = null;
+                }
             }
             foreach (var s in _services)
             {
@@ -376,9 +380,12 @@ namespace mk.dev.runner.core
         {
             if (port is not > 0)
                 return;
-            var killed = Cleanup.FreePort(port.Value);
-            if (killed.Count > 0 && owner != null)
-                owner.Logs.Add($"\x1b[33m[runner] freed port {port}: killed {string.Join(", ", killed)}\x1b[0m");
+            var (killed, failed) = Cleanup.FreePort(port.Value);
+            var log = owner?.Logs ?? BuildLog;
+            if (killed.Count > 0)
+                log.Add($"\x1b[33m[runner] freed port {port}: killed {string.Join(", ", killed)}\x1b[0m");
+            if (failed.Count > 0)
+                log.Add($"\x1b[91m[runner] couldn't free port {port}: {string.Join(", ", failed)}\x1b[0m");
         }
 
         private void KillLeftovers()
@@ -390,8 +397,17 @@ namespace mk.dev.runner.core
         {
             var dirs = _services.Where(s => s.Config.IsDotnet).Select(s => Project.ServiceDir(s.Config));
             var n = Cleanup.KillGhosts(dirs, Project.RootDir);
+            if (n < 0)
+                BuildLog.Add("\x1b[91m[runner] couldn't check for stray dotnet processes (Windows didn't answer)\x1b[0m");
             if (n > 0)
                 BuildLog.Add($"\x1b[33m[runner] swept {n} stray dotnet process(es)\x1b[0m");
+        }
+
+        private static void KillLogged(ServiceRunner s, ServiceProcess sp, string reason, bool wait)
+        {
+            var error = sp.Kill(reason, wait);
+            if (error != null)
+                s.Logs.Add($"\x1b[91m[runner] couldn't stop {s.Name}: {error}\x1b[0m");
         }
 
         private void RaiseChanged()

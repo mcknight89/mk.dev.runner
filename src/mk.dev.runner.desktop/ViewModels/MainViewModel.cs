@@ -22,13 +22,13 @@ namespace mk.dev.runner.desktop.ViewModels
             AddProject = new Command(DoAddProject);
             ImportFolder = new Command(DoImportFolder);
             RemoveProject = new Command(DoRemoveProject, () => Selected != null && Selected.Runner?.SessionActive != true);
-            OpenSettings = new Command(() => new Views.SettingsWindow(this) { Owner = Application.Current.MainWindow }.ShowDialog());
+            OpenSettings = new Command(() => new Views.SettingsWindow(this) { Owner = Application.Current?.MainWindow }.ShowDialog());
 
             Updates = new Updates.Updater(Settings);
             InstallUpdate = new Command(async () =>
             {
                 var running = Projects.Sum(p => p.Services.Count(s => s.IsActive));
-                if (running > 0 && MessageBox.Show(Application.Current.MainWindow,
+                if (running > 0 && MessageBox.Show(Application.Current?.MainWindow!,
                         $"Updating restarts Dev Runner and stops the {running} running service{(running == 1 ? "" : "s")}. They stay stopped afterwards.\n\nUpdate to {Updates.Available} now?",
                         "Update Dev Runner", MessageBoxButton.OKCancel, MessageBoxImage.Question) != MessageBoxResult.OK) return;
                 await Updates.InstallAsync(() => Task.Run(StopEverything));
@@ -86,7 +86,6 @@ namespace mk.dev.runner.desktop.ViewModels
 
         public void StopEverything()
         {
-            _timer.Stop();
             Parallel.ForEach(Projects.Where(p => p.Runner?.SessionActive == true).ToList(), p =>
             {
                 try { p.Runner!.StopAll(); } catch { }

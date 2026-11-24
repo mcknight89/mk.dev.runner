@@ -70,6 +70,7 @@ namespace mk.dev.runner.core.Logs
 
         public void OpenFile(string path, string header)
         {
+            string? error = null;
             lock (_gate)
             {
                 CloseFileLocked();
@@ -83,8 +84,14 @@ namespace mk.dev.runner.core.Logs
                     _file.WriteLine("# " + header);
                     Path = path;
                 }
-                catch { _file = null; }
+                catch (Exception e)
+                {
+                    _file = null;
+                    error = e.Message;
+                }
             }
+            if (error != null)
+                Add($"\x1b[91m[runner] couldn't write the log file {path}: {error}\x1b[0m");
         }
 
         public string? Path { get; private set; }

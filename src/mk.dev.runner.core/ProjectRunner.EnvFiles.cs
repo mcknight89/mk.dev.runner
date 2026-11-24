@@ -31,7 +31,10 @@ namespace mk.dev.runner.core
                     w.EnableRaisingEvents = true;
                     _envWatchers.Add(w);
                 }
-                catch { }
+                catch (Exception e)
+                {
+                    BuildLog.Add($"\x1b[91m[runner] couldn't watch {f} for changes: {e.Message}\x1b[0m");
+                }
             }
         }
 

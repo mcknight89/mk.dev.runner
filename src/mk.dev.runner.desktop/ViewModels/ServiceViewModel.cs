@@ -145,8 +145,13 @@ namespace mk.dev.runner.desktop.ViewModels
             BuildSparkline();
         }
 
+        private int _historyVersion = -1;
+
         private void BuildSparkline()
         {
+            if (S.HistoryVersion == _historyVersion)
+                return;
+            _historyVersion = S.HistoryVersion;
             var h = S.MemoryHistory();
             const double W = 120, H = 28;
             if (h.Length < 2) { if (Sparkline.Count > 0) Sparkline = []; PeakText = ""; return; }

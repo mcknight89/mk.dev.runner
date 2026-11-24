@@ -38,7 +38,7 @@ namespace mk.dev.runner.core
         public TimeSpan LastCpu { get; set; }
         public DateTime LastSampleAt { get; set; } = DateTime.Now;
 
-        public void Kill(string reason, bool wait)
+        public string? Kill(string reason, bool wait)
         {
             KillReason ??= reason;
             try
@@ -47,9 +47,18 @@ namespace mk.dev.runner.core
                     Job.Terminate();
                 else
                     P.Kill(entireProcessTree: true);
+                if (wait)
+                    P.WaitForExit(5000);
+                return null;
             }
-            catch { }
-            if (wait) try { P.WaitForExit(5000); } catch { }
+            catch (InvalidOperationException)
+            {
+                return null;
+            }
+            catch (Exception e)
+            {
+                return e.Message;
+            }
         }
     }
 
