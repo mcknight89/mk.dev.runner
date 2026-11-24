@@ -49,3 +49,13 @@ jobs:
                       "--releaseName", "Dev Runner $env:VERSION", "--tag", "${{ github.ref_name }}")
           if ($env:CHANNEL -eq "dev") { $upload += "--pre" }
           dotnet vpk upload github @upload
+
+      # release-notes/<version>.md becomes the release's description, if there is one
+      - name: Release notes
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $notes = "release-notes/$env:VERSION.md"
+          if (Test-Path $notes) { gh release edit "${{ github.ref_name }}" --notes-file $notes }
+          else { "No $notes, so the release has no notes." }
