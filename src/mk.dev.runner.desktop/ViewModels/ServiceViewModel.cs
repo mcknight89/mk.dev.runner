@@ -30,6 +30,7 @@ namespace mk.dev.runner.desktop.ViewModels
             OpenUrl = new Command(() => { if (_runner.UrlOf(S) is { } u) Shell.Open(u); }, () => _runner.UrlOf(S) != null);
             OpenLog = new Command(() => new Views.LogFileWindow($"{S.Name} log", _runner.LogFileOf(S)).Show());
             OpenFolder = new Command(() => Shell.Open(_runner.Project.ServiceDir(S.Config)));
+            Edit = new Command(() => _owner.EditService(S.Key));
             Refresh();
         }
 
@@ -46,6 +47,7 @@ namespace mk.dev.runner.desktop.ViewModels
         public Command OpenUrl { get; }
         public Command OpenLog { get; }
         public Command OpenFolder { get; }
+        public Command Edit { get; }
 
         private ServiceState _state;
         public ServiceState State { get => _state; private set => Set(ref _state, value); }
@@ -117,7 +119,7 @@ namespace mk.dev.runner.desktop.ViewModels
             }
             (StateText, StateBrush) = S.State switch
             {
-                ServiceState.Running when S.NoReadyLine => ("Running? (no ready line)", Palette.Brush(Palette.Warn)),
+                ServiceState.Running when S.NotResponding => ($"Not responding · {S.LastProblem}", Palette.Brush(Palette.Warn)),
                 ServiceState.Running => ("Running", Palette.Brush(Palette.Good)),
                 ServiceState.Starting => ("Starting…", Palette.Brush(Palette.Info)),
                 ServiceState.Building => ("Building…", Palette.Brush(Palette.Building)),

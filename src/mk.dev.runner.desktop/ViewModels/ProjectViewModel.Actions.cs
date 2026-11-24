@@ -6,26 +6,18 @@ namespace mk.dev.runner.desktop.ViewModels
     {
         public void DoEditProject()
         {
-            if (Runner == null)
+            EditService(null);
+        }
+
+        public void EditService(string? key)
+        {
+            if (Runner is not { } runner)
                 return;
-            if (Runner.SessionActive)
-            {
-                Views.ChoiceWindow.Tell($"Stop {Name} first", "Use Stop all, then edit it.");
-                return;
-            }
-            var w = new Views.ProjectEditorWindow(this) { Owner = Application.Current.MainWindow };
+            var w = new Views.ProjectEditorWindow(this, key) { Owner = Application.Current.MainWindow };
             w.ShowDialog();
             if (!w.Saved)
                 return;
-            try
-            {
-                Runner.ReloadProject();
-            }
-            catch (Exception e)
-            {
-                Views.ChoiceWindow.Problem("The project couldn't be reloaded", e.Message);
-            }
-            BuildServices();
+            RunBackground(runner.ReloadProject, runner.SessionActive ? "Applying changes…" : "", "The changes couldn't be applied");
         }
 
         public bool TryRename(string name)
@@ -57,18 +49,10 @@ namespace mk.dev.runner.desktop.ViewModels
                 Reattach();
                 return;
             }
-            try
-            {
-                if (!Runner.ReloadProject())
-                    Views.ChoiceWindow.Tell("Stop the project first", "Then reload its config.");
-            }
-            catch (Exception e)
-            {
-                Views.ChoiceWindow.Problem("The config couldn't be reloaded", e.Message);
-            }
+            RunBackground(Runner.ReloadProject, Runner.SessionActive ? "Reloading…" : "", "The config couldn't be reloaded");
         }
 
-        public void RunBackground(Action action, string text)
+        public void RunBackground(Action action, string text, string? failTitle = null)
         {
             _busy = true;
             BusyText = text;
@@ -82,7 +66,7 @@ namespace mk.dev.runner.desktop.ViewModels
                 catch (Exception e)
                 {
                     Application.Current.Dispatcher.BeginInvoke(() =>
-                        Views.ChoiceWindow.Problem($"{Name} couldn't start", e.Message));
+                        Views.ChoiceWindow.Problem(failTitle ?? $"{Name} couldn't start", e.Message));
                 }
                 finally
                 {

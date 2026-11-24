@@ -39,6 +39,7 @@ This starts a .NET API on port 5000 and an npm site on port 3000. Paths are rela
       "dir": "src/MyApp.Api",
       "defaultPort": 5000,
       "url": "http://localhost:{port}/swagger",
+      "health": { "type": "http", "path": "/health" },
       "color": "cyan"
     },
     {
@@ -57,7 +58,7 @@ This starts a .NET API on port 5000 and an npm site on port 3000. Paths are rela
       "dir": "tools/worker",
       "cmd": "node",
       "args": ["worker.js", "--verbose"],
-      "readyPattern": "listening for jobs",
+      "health": { "type": "log", "pattern": "listening for jobs" },
       "enabled": false
     }
   ]
@@ -76,7 +77,7 @@ Each entry in `"services"` is one thing to run.
 | `dir` | Folder to run in, relative to the project root. | `.` |
 | `defaultPort` | The port the service listens on. See [Ports](#ports). | none |
 | `url` | What the Browser button opens. `{port}` is replaced with the port. | `http://localhost:{port}` |
-| `readyPattern` | A log line (regex, any case) that means the service is up. See [Ready](#ready). | depends on type |
+| `health` | How Dev Runner knows the service is up and still answering. See [Health checks](#health-checks). | automatic |
 | `enabled` | `false` to leave the service off until someone turns it on. | `true` |
 | `color` | Card and log colour: `cyan`, `green`, `magenta`, `yellow`, `blue`, `red`, `white`, `orange`, `teal`, `purple`, `pink` or `lime`. | grey |
 | `env` | Variables set on this service's command. | none |
@@ -107,15 +108,23 @@ Before starting, it checks the port is free. If something else holds it, the car
 
 Each person can use a different port on their machine (in **Edit**); that's saved locally, not in this file.
 
-### Ready
+### Health checks
 
-A service shows **Starting** until its ready line appears in the log, then **Running**. Without a `readyPattern`:
+A service shows **Starting** until its health check passes, then **Running**. Port and address checks carry on every 10 seconds while it runs. If one fails three times in a row, the card shows **Not responding** in amber with the reason, and goes back to Running when it answers again. The service is never stopped because of it.
 
-- **dotnet** waits for `Now listening on` or `Application started`
-- **npm** waits for things like `ready in`, `Local:` or `localhost:<port>`
-- **command** counts as running as soon as it starts
+| `"health"` | Running once | Keeps checking |
+|---|---|---|
+| *(none)* or `{ "type": "auto" }` | the port answers, or the usual startup line appears (`Now listening on` for dotnet, `Local:` and similar for npm) | the port, once it has answered |
+| `{ "type": "port" }` | something answers on the port | yes |
+| `{ "type": "http", "path": "/health" }` | the address answers without an error (below 400) | yes |
+| `{ "type": "log", "pattern": "jobs ready" }` | a log line matches the pattern (regex, any case) | no |
+| `{ "type": "none" }` | straight away | no |
 
-If the line hasn't appeared after `startTimeoutSec`, the card shows **Running? (no ready line)** in amber. The service keeps running; it's a hint to set `readyPattern`.
+- `path` can be a path on the service's port (`/health`) or a full address (`http://localhost:{port}/ready`).
+- `"everySec": 30` changes how often port and address checks run (default 10).
+- If nothing passes within `startTimeoutSec` (90 s), the card shows **Not responding**, with what it was waiting for. The service keeps running.
+- With the automatic check, a service with no port and no usual startup line counts as running as soon as it starts.
+- The older `"readyPattern": "..."` still works; it's the same as a `log` check.
 
 ## Globals
 
@@ -129,7 +138,7 @@ Settings for the whole project, under `"globals"`.
 | `rebuildDebounceSec` | Managed mode: how long to wait after the last change before building. | `2` |
 | `autoRetry` | Restart a service when it crashes. | `false` |
 | `maxRetries` | How many crashes in a row before giving up. | `5` |
-| `startTimeoutSec` | How long to wait for the ready line. | `90` |
+| `startTimeoutSec` | How long a health check has to pass after starting. | `90` |
 | `restartOnChange` | Files that restart the dotnet services when they change, relative to the root. | `[".env"]` |
 | `logBufferLines` | How many log lines each service keeps on screen. | `2000` |
 

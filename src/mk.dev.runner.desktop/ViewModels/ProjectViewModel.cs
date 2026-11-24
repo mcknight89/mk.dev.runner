@@ -38,8 +38,8 @@ namespace mk.dev.runner.desktop.ViewModels
             ViewBuildLog = new Command(() => { if (Runner is { } r) new Views.LogFileWindow($"{Name} build log", r.BuildLogFile).Show(); },
                                        () => Runner?.IsManaged == true);
             Rename = new Command(DoRename);
-            EditProject = new Command(DoEditProject, () => Runner != null && !Runner.SessionActive);
-            Reload = new Command(ReloadConfig, () => Runner?.SessionActive != true);
+            EditProject = new Command(DoEditProject, () => Runner != null && !_busy);
+            Reload = new Command(ReloadConfig, () => !_busy);
             ClearLog = new Command(() => SelectedLog?.Clear());
             Remove = new Command(() => { _main.Selected = this; _main.RemoveProject.Execute(null); }, () => Runner?.SessionActive != true);
         }

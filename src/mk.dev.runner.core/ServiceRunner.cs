@@ -18,7 +18,7 @@ namespace mk.dev.runner.core
             Logs = new LogBuffer(maxLines);
         }
 
-        public int Index { get; }
+        public int Index { get; internal set; }
         public ServiceConfig Config { get; internal set; }
         public string Key => Config.Key;
         public string Name => Config.DisplayName;
@@ -46,11 +46,17 @@ namespace mk.dev.runner.core
         internal int Fails { get; set; }
         internal Timer? RetryTimer { get; set; }
         internal Timer? ReadyTimer { get; set; }
+        internal Timer? HealthTimer { get; set; }
         internal Dictionary<string, string>? StartedEnv { get; set; }
         internal Regex? Ready { get; set; }
         internal Regex? Fail { get; set; }
+        internal HealthConfig Health { get; set; } = new();
+        internal HealthCheck HealthKind { get; set; }
+        internal string? HealthUrl { get; set; }
+        internal int HealthFails { get; set; }
+        internal bool PortAnswered { get; set; }
 
-        public bool NoReadyLine { get; internal set; }
+        public bool NotResponding { get; internal set; }
 
         public string? LastProblem { get; internal set; }
 
@@ -60,6 +66,8 @@ namespace mk.dev.runner.core
             RetryTimer = null;
             ReadyTimer?.Dispose();
             ReadyTimer = null;
+            HealthTimer?.Dispose();
+            HealthTimer = null;
         }
 
         public int HistoryVersion { get; private set; }

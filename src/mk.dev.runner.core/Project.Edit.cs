@@ -24,7 +24,8 @@ namespace mk.dev.runner.core
         public string? Color { get; set; }
         public int? Port { get; set; }
         public bool Enabled { get; set; } = true;
-        public string? ReadyPattern { get; set; }
+        public string Health { get; set; } = "auto";
+        public string? HealthValue { get; set; }
         public string? Cmd { get; set; }
         public string? Args { get; set; }
         public string? Script { get; set; }
@@ -35,6 +36,7 @@ namespace mk.dev.runner.core
     {
         public static readonly string[] ServiceTypes = [.. Enum.GetNames<ServiceType>().Select(n => n.ToLowerInvariant()).OrderBy(n => n == "command")];
         public static readonly string[] DotnetModes = [.. Enum.GetNames<DotnetMode>().Select(n => n.ToLowerInvariant())];
+        public static readonly string[] HealthChecks = [.. Enum.GetNames<HealthCheck>().Select(n => n.ToLowerInvariant())];
         public static readonly string[] Colors = ["cyan", "green", "magenta", "yellow", "blue", "red", "white", "orange", "teal", "purple", "pink", "lime"];
 
         public ProjectDefinition ReadDefinition()
@@ -64,7 +66,8 @@ namespace mk.dev.runner.core
                         Color = Json.String(s["color"]),
                         Port = Json.Int(s["defaultPort"]),
                         Enabled = Json.Bool(s["enabled"]) ?? true,
-                        ReadyPattern = Json.String(s["readyPattern"]),
+                        Health = (Json.String(s["health"]?["type"]) ?? (Json.String(s["readyPattern"]) != null ? "log" : "auto")).ToLowerInvariant(),
+                        HealthValue = Json.String(s["health"]?["path"]) ?? Json.String(s["health"]?["pattern"]) ?? Json.String(s["readyPattern"]),
                         Cmd = Json.String(s["cmd"]),
                         Args = (s["args"] as JsonArray) is { } a ? CommandArgs.Join(a.Select(Json.String).OfType<string>()) : null,
                         Script = Json.String(s["script"]),
@@ -133,7 +136,22 @@ namespace mk.dev.runner.core
                     else
                         o.Remove("defaultPort");
                     o["enabled"] = s.Enabled;
-                    Set(o, "readyPattern", s.ReadyPattern);
+                    o.Remove("readyPattern");
+                    var value = string.IsNullOrWhiteSpace(s.HealthValue) ? null : s.HealthValue.Trim();
+                    if (s.Health == "auto")
+                        o.Remove("health");
+                    else
+                    {
+                        var health = o["health"] as JsonObject ?? new JsonObject();
+                        health["type"] = s.Health;
+                        health.Remove("path");
+                        health.Remove("pattern");
+                        if (value != null && s.Health == "http")
+                            health["path"] = value;
+                        if (value != null && s.Health == "log")
+                            health["pattern"] = value;
+                        o["health"] = health;
+                    }
                     Set(o, "url", s.Url);
                     Set(o, "cmd", s.Type == "command" ? s.Cmd : null);
                     Set(o, "script", s.Type == "npm" ? s.Script : null);

@@ -17,7 +17,7 @@ namespace mk.dev.runner.core
             s.Stopped = false;
             s.CancelTimers();
             s.State = ServiceState.Starting;
-            s.NoReadyLine = false;
+            s.NotResponding = false;
             s.LastProblem = null;
             s.Logs.Add($"\x1b[2m[runner] starting {s.Name}…\x1b[0m");
 
@@ -72,11 +72,8 @@ namespace mk.dev.runner.core
             foreach (var (k, v) in userEnv)
                 psi.Environment[k] = v;
 
-            var (ready, fail, badPattern) = Patterns(s.Config);
-            if (badPattern != null)
-                s.Logs.Add($"\x1b[91m[runner] the ready pattern isn't valid ({badPattern}), using the usual one\x1b[0m");
-            s.Ready = ready;
-            s.Fail = fail;
+            s.Ready = null;
+            s.Fail = FailLine(s.Config);
 
             ServiceProcess sp;
             try
@@ -103,16 +100,7 @@ namespace mk.dev.runner.core
             if (p.HasExited)
                 OnProcessExited(s, sp);
 
-            var timeout = TimeSpan.FromSeconds(Math.Max(5, Project.Config.Globals.StartTimeoutSec));
-            s.ReadyTimer = _q.After(timeout, () =>
-            {
-                if (s.Proc == sp && s.State is ServiceState.Starting or ServiceState.Restarting)
-                {
-                    s.State = ServiceState.Running;
-                    s.NoReadyLine = true;
-                    s.Logs.Add($"\x1b[33m[runner] still running after {timeout.TotalSeconds:0} s but never printed its ready line. Check the log, or set readyPattern.\x1b[0m");
-                }
-            });
+            BeginHealth(s, sp, port);
         }
 
         private void OnLine(ServiceRunner s, ServiceProcess sp, string? line)
@@ -135,17 +123,14 @@ namespace mk.dev.runner.core
                     Notice?.Invoke(new RunnerNotice(Project.Name, s.Name, s.LastProblem));
                 });
             }
-            else if (s.State is ServiceState.Starting or ServiceState.Restarting or ServiceState.Failed or ServiceState.Crashed
-                     && (s.Ready == null || s.Ready.IsMatch(plain)))
+            else if (s.Ready != null && s.Ready.IsMatch(plain))
             {
                 _q.Post(() =>
                 {
-                    if (s.Proc != sp || s.State is not (ServiceState.Starting or ServiceState.Restarting or ServiceState.Failed or ServiceState.Crashed))
+                    if (s.Proc != sp)
                         return;
-                    s.State = ServiceState.Running;
-                    s.NoReadyLine = false;
-                    s.ReadyTimer?.Dispose();
-                    s.ReadyTimer = null;
+                    if (IsStarting(s) || (s.NotResponding && s.HealthKind == HealthCheck.Log))
+                        MarkRunning(s);
                 });
             }
         }
@@ -189,6 +174,9 @@ namespace mk.dev.runner.core
                 s.Proc = null;
                 s.ReadyTimer?.Dispose();
                 s.ReadyTimer = null;
+                s.HealthTimer?.Dispose();
+                s.HealthTimer = null;
+                s.NotResponding = false;
                 s.Metrics = ServiceMetrics.Empty;
             }
 
@@ -367,28 +355,6 @@ namespace mk.dev.runner.core
                     args.AddRange(c.Args);
             }
             return CommandArgs.Join(new[] { exe }.Concat(args));
-        }
-
-        private static (Regex? ready, Regex? fail, string? badPattern) Patterns(ServiceConfig c)
-        {
-            Regex? ready = null;
-            string? badPattern = null;
-            if (!string.IsNullOrWhiteSpace(c.ReadyPattern))
-            {
-                try
-                {
-                    ready = new Regex(c.ReadyPattern!, RegexOptions.IgnoreCase);
-                }
-                catch (ArgumentException e)
-                {
-                    badPattern = e.Message;
-                }
-            }
-            ready ??= c.IsNpm ? new Regex(@"ready in|- local:|started server|compiled|localhost:\d+", RegexOptions.IgnoreCase)
-                    : c.IsDotnet ? new Regex(@"now listening on|application started", RegexOptions.IgnoreCase)
-                    : null;
-            var fail = c.IsDotnet ? new Regex(@"build failed|exited with error code", RegexOptions.IgnoreCase) : null;
-            return (ready, fail, badPattern);
         }
     }
 }

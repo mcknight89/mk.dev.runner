@@ -103,8 +103,8 @@
                             ToolTip="Stop every service (Shift+F5). Greyed out when nothing is running."/>
                     <Button Content="Restart all" Command="{Binding RestartAll}" Margin="6,0,0,0" ToolTipService.ShowOnDisabled="True"
                             ToolTip="Restart every running service (Ctrl+Shift+F5). Greyed out when nothing is running."/>
-                    <Button Content="Edit" Command="{Binding EditProject}" Margin="6,0,0,0" ToolTipService.ShowOnDisabled="True"
-                            ToolTip="Edit the project's settings and services. Stop the project first."/>
+                    <Button Content="Edit project" Command="{Binding EditProject}" Margin="6,0,0,0"
+                            ToolTip="Edit the project's settings and its list of services. Changed services restart when you save."/>
                     <Button Content="Environment" Command="{Binding EditEnv}" Margin="6,0,0,0" ToolTip="Edit environment variables"/>
                     <Button x:Name="MoreButton" Style="{StaticResource Icon}" Content="&#xE712;" Margin="6,0,0,0" ToolTip="More" AutomationProperties.Name="More" Click="More_Click">
                         <Button.ContextMenu>
@@ -181,6 +181,7 @@
                                         <ColumnDefinition Width="Auto"/>
                                         <ColumnDefinition Width="*"/>
                                         <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
                                     <Ellipse Width="9" Height="9" Fill="{Binding StateBrush}" Margin="0,0,8,0"/>
                                     <TextBlock Grid.Column="1" TextTrimming="CharacterEllipsis">
@@ -190,6 +191,8 @@
                                     <CheckBox Grid.Column="2" Style="{StaticResource Switch}" IsChecked="{Binding Enabled}" Content="{Binding EnabledText}"
                                               Foreground="{StaticResource Muted}" FontSize="11.5"
                                               ToolTip="Enabled on this machine. Off means Start all skips it until you turn it back on (it's saved). To stop it just for now, use Stop."/>
+                                    <Button Grid.Column="3" Style="{StaticResource Icon}" Content="&#xE70F;" Command="{Binding Edit}" Margin="8,-4,-4,-4"
+                                            ToolTip="Edit this service: port, address, health check, command" AutomationProperties.Name="Edit service"/>
                                 </Grid>
                                 <TextBlock Margin="17,2,0,0" FontSize="12" Text="{Binding StateText}" Foreground="{Binding StateBrush}"/>
                                 <Grid Margin="0,10,0,0">

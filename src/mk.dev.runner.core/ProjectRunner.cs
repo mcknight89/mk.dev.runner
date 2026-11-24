@@ -207,34 +207,24 @@ namespace mk.dev.runner.core
             _q.Post(() =>
             {
                 Project.Reload();
-                foreach (var s in _services)
-                {
-                    if (!s.HasProcess || s.StartedEnv == null)
-                        continue;
-                    var now = UserEnv(s);
-                    if (SameMap(now, s.StartedEnv))
-                        continue;
-                    s.Logs.Add("\x1b[33m[runner] environment changed — restarting…\x1b[0m");
-                    RestartCore(s);
-                }
+                RestartIfEnvChanged();
             });
         }
 
-        public bool ReloadProject()
+        public void ReloadProject()
         {
-            var ok = false;
             _q.Invoke(() =>
             {
                 if (SessionActive)
+                {
+                    ReloadWhileRunning();
                     return;
+                }
                 Project.Reload();
                 BuildLog.MaxLines = Project.Config.Globals.LogBufferLines;
                 LoadServices();
-                ok = true;
             });
-            if (ok)
-                ServicesChanged?.Invoke();
-            return ok;
+            ServicesChanged?.Invoke();
         }
 
         private void BeginSessionSafe()
@@ -252,11 +242,10 @@ namespace mk.dev.runner.core
             try
             {
                 Project.Reload();
-                if (!SameServices())
-                {
-                    LoadServices();
+                var same = SameServices();
+                LoadServices();
+                if (!same)
                     ServicesChanged?.Invoke();
-                }
                 BuildLog.MaxLines = Project.Config.Globals.LogBufferLines;
 
                 var stamp = DateTime.Now.ToString("g");
@@ -376,16 +365,17 @@ namespace mk.dev.runner.core
             var old = _services;
             _services = Project.Config.Services.Select((c, i) =>
             {
-                var existing = old.FirstOrDefault(o => o.Key.Equals(c.Key, StringComparison.OrdinalIgnoreCase) && o.Index == i);
+                var existing = old.FirstOrDefault(o => o.Key.Equals(c.Key, StringComparison.OrdinalIgnoreCase));
                 if (existing != null)
                 {
+                    existing.Index = i;
                     existing.Config = c;
                     existing.Logs.MaxLines = max;
                     return existing;
                 }
                 return new ServiceRunner(i, c, max);
             }).ToArray();
-            foreach (var s in _services)
+            foreach (var s in _services.Where(s => !s.HasProcess && !s.IsBusy))
                 s.State = IsEnabled(s) ? ServiceState.Stopped : ServiceState.Disabled;
             _depDirs = [];
         }

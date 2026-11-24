@@ -42,6 +42,7 @@ namespace mk.dev.runner.desktop.Views
                 D.Type = value;
                 Raise();
                 Raise(nameof(Subtitle));
+                Raise(nameof(PortHint));
                 TypeChanged?.Invoke();
             }
         }
@@ -94,21 +95,75 @@ namespace mk.dev.runner.desktop.Views
                 Raise();
             }
         }
-        public string? ReadyPattern
+        public string Health
         {
-            get => D.ReadyPattern; set
+            get => D.Health; set
             {
-                D.ReadyPattern = value;
+                D.Health = value;
                 Raise();
+                Raise(nameof(HealthValueVisible));
+                Raise(nameof(HealthValueLabel));
+                Raise(nameof(HealthValueHint));
+                Raise(nameof(HealthHint));
             }
         }
+        public string? HealthValue
+        {
+            get => D.HealthValue; set
+            {
+                D.HealthValue = value;
+                Raise();
+                Raise(nameof(HealthValueHint));
+            }
+        }
+        public Visibility HealthValueVisible => D.Health is "http" or "log" ? Visibility.Visible : Visibility.Collapsed;
+        public string HealthValueLabel => D.Health == "http" ? "Path" : "Log line to wait for (regex)";
+        public string HealthValueHint => D.Health == "http"
+            ? $"Added to the address, e.g. /health. Checks {CheckedUrl ?? "nothing until there's a port or address"}."
+            : "Empty = the usual startup line for its type.";
+        public string HealthHint => D.Health switch
+        {
+            "port" => "Running once something answers on the port. Checked every 10 s after that.",
+            "http" => "Running once the address answers without an error. Checked every 10 s after that.",
+            "log" => "Running once a log line matches.",
+            "none" => "Running as soon as it starts. Nothing is checked.",
+            _ => "Running once the port answers or the usual startup line appears. Checked every 10 s after that. Works for most apps.",
+        };
         public string? Url
         {
             get => D.Url; set
             {
                 D.Url = value;
                 Raise();
+                RaiseAddress();
             }
+        }
+
+        private string? DefaultAddress => D.Port is { } p ? $"http://localhost:{p}" : null;
+        private string? Address => string.IsNullOrWhiteSpace(D.Url) ? DefaultAddress : D.Url.Replace("{port}", D.Port?.ToString() ?? "");
+        private string? CheckedUrl
+        {
+            get
+            {
+                var path = D.HealthValue?.Trim() ?? "";
+                if (path.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+                    return path.Replace("{port}", D.Port?.ToString() ?? "");
+                if (Address == null || path.Length == 0)
+                    return Address;
+                return Address.TrimEnd('/') + (path.StartsWith('/') ? path : "/" + path);
+            }
+        }
+        public string PortHint => D.Type == "dotnet"
+            ? "Dev Runner starts the app on this port (it sets ASPNETCORE_URLS). Empty = the app picks."
+            : "Dev Runner passes it to the app as PORT. Empty = none.";
+        public string AddressHint => string.IsNullOrWhiteSpace(D.Url)
+            ? $"What Browser opens and the URL check uses. Empty = {DefaultAddress ?? "none until there's a port"}."
+            : "What Browser opens and the URL check uses. {port} becomes the port.";
+
+        private void RaiseAddress()
+        {
+            Raise(nameof(AddressHint));
+            Raise(nameof(HealthValueHint));
         }
 
         private string? _portText;
@@ -122,12 +177,13 @@ namespace mk.dev.runner.desktop.Views
                 PortInvalid = value.Trim().Length > 0 && !int.TryParse(value.Trim(), out _);
                 Raise();
                 Raise(nameof(Subtitle));
+                RaiseAddress();
             }
         }
         public bool PortInvalid { get; private set; }
 
         public string Title => string.IsNullOrWhiteSpace(Name) ? (string.IsNullOrWhiteSpace(Key) ? "New service" : Key) : Name;
-        public string Subtitle => $"{Type} · {Dir}{(D.Port is { } p ? $" · :{p}" : "")}";
+        public string Subtitle => string.Join(" · ", new[] { Type, Dir is "." or "" ? null : Dir, D.Port is { } p ? $":{p}" : null }.Where(x => x != null));
 
         public event Action? TypeChanged;
     }
@@ -142,7 +198,7 @@ namespace mk.dev.runner.desktop.Views
 
         public bool Saved { get; private set; }
 
-        public ProjectEditorWindow(ProjectViewModel vm)
+        public ProjectEditorWindow(ProjectViewModel vm, string? serviceKey = null)
         {
             InitializeComponent();
             InputBindings.Add(new KeyBinding(new Command(() => Save_Click(this, new RoutedEventArgs())), Key.S, ModifierKeys.Control));
@@ -153,7 +209,8 @@ namespace mk.dev.runner.desktop.Views
 
             Title = $"Edit project — {vm.Name}";
             Heading.Text = $"Edit {vm.Name}";
-            FilePath.Text = $"Saves to {_project.ConfigPath}" + (_project.ConfigHasComments ? ". Saving removes the comments in it." : "");
+            FilePath.Text = $"Saves to {_project.ConfigPath}" + (_project.ConfigHasComments ? ". Saving removes the comments in it." : "")
+                + (vm.Runner.SessionActive ? ". Running services you change restart when you save." : "");
             ProjectName.Text = vm.Name;
             DotnetMode.ItemsSource = Project.DotnetModes;
             DotnetMode.SelectedItem = Project.DotnetModes.Contains(_def.DotnetMode) ? _def.DotnetMode : "watch";
@@ -163,11 +220,20 @@ namespace mk.dev.runner.desktop.Views
             AutoRebuild.IsChecked = _def.AutoRebuild;
             TypeBox.ItemsSource = Project.ServiceTypes;
             ColorBox.ItemsSource = Project.Colors;
+            HealthBox.ItemsSource = Project.HealthChecks;
 
             foreach (var s in _def.Services)
                 _rows.Add(Hook(new ServiceRow(s)));
             List.ItemsSource = _rows;
-            List.SelectedIndex = _rows.Count > 0 ? 0 : -1;
+            var start = _rows.FirstOrDefault(r => r.Key.Equals(serviceKey, StringComparison.OrdinalIgnoreCase));
+            if (start != null)
+            {
+                List.SelectedItem = start;
+                Heading.Text = $"Edit {start.Title}";
+                Title = $"Edit {start.Title} — {vm.Name}";
+            }
+            else
+                List.SelectedIndex = _rows.Count > 0 ? 0 : -1;
             ShowSelected();
             UpdateModeFields();
         }
@@ -191,10 +257,8 @@ namespace mk.dev.runner.desktop.Views
             Form.DataContext = r;
             var has = r != null;
             NoService.Visibility = has ? Visibility.Collapsed : Visibility.Visible;
-            foreach (var el in new FrameworkElement[] { Fields, NpmFields, CommandFields, ArgsFields })
-                el.Visibility = has ? Visibility.Visible : Visibility.Collapsed;
-            foreach (var ex in Form.Children.OfType<Expander>())
-                ex.Visibility = has ? Visibility.Visible : Visibility.Collapsed;
+            ServiceForm.Visibility = has ? Visibility.Visible : Visibility.Collapsed;
+            Dispatcher.BeginInvoke(FormScroll.ScrollToHome, System.Windows.Threading.DispatcherPriority.Loaded);
             if (has)
                 ShowTypeFields();
         }

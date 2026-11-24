@@ -3,7 +3,7 @@
   "services": [
     { "key": "api", "name": "Sample API", "type": "dotnet", "dir": "api", "defaultPort": 5180, "url": "http://localhost:{port}/" },
     { "key": "web", "name": "Sample Web", "type": "npm", "dir": "web", "defaultPort": 5181 },
-    { "key": "worker", "name": "Worker", "type": "command", "dir": "worker", "cmd": "node", "args": ["worker.js"], "readyPattern": "started" },
+    { "key": "worker", "name": "Worker", "type": "command", "dir": "worker", "cmd": "node", "args": ["worker.js"], "health": { "type": "log", "pattern": "started" } },
     { "key": "crashy", "name": "Crashy", "type": "command", "dir": "worker", "cmd": "node", "args": ["crash.js"], "enabled": false }
   ]
 }

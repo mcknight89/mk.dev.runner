@@ -57,6 +57,12 @@ namespace mk.dev.runner.core.Config
 
         public string? Url { get; set; }
 
+        public HealthConfig? Health { get; set; }
+
+        [JsonIgnore]
+        public HealthConfig HealthOrDefault =>
+            Health ?? (string.IsNullOrWhiteSpace(ReadyPattern) ? new HealthConfig() : new HealthConfig { Type = "log", Pattern = ReadyPattern });
+
         [JsonIgnore] public string DisplayName => string.IsNullOrWhiteSpace(Name) ? Key : Name!;
 
         [JsonIgnore] public ServiceType Kind => Enum.TryParse<ServiceType>(Type, ignoreCase: true, out var kind) ? kind : ServiceType.Command;

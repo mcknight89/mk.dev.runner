@@ -199,6 +199,17 @@ namespace mk.dev.runner.core
             return port is > 0 ? $"http://localhost:{port}" : null;
         }
 
+        public string? HealthUrlOf(ServiceConfig svc)
+        {
+            var path = svc.HealthOrDefault.Path?.Trim() ?? "";
+            if (path.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+                return path.Replace("{port}", PortOf(svc)?.ToString() ?? "");
+            var address = UrlOf(svc);
+            if (address == null || path.Length == 0)
+                return address;
+            return address.TrimEnd('/') + (path.StartsWith('/') ? path : "/" + path);
+        }
+
         public void SetEnabled(ServiceConfig svc, bool enabled)
         {
             lock (_gate)

@@ -40,7 +40,7 @@ Runs dotnet (`watch`, `run` or managed builds), npm and any command. Each projec
 }
 ```
 
-**[How .dev.json works](docs/dev-json.md)**: every field, what each type runs, ports, ready lines and dotnet modes.
+**[How .dev.json works](docs/dev-json.md)**: every field, what each type runs, ports, health checks and dotnet modes.
 
 Build with `build.cmd`, make an installer with `release.cmd 0.0.2`, and push a `v*` tag to publish a release. The `sample\` folder has a project to try.
 
