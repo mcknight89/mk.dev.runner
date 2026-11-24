@@ -17,17 +17,18 @@ namespace mk.dev.runner.core
             s.Stopped = false;
             s.CancelTimers();
             s.State = ServiceState.Starting;
+            s.NoReadyLine = false;
+            s.LastProblem = null;
             s.Logs.Add($"\x1b[2m[runner] starting {s.Name}…\x1b[0m");
-            RaiseChanged();
 
             var port = PortOf(s);
             var holder = PortHolder(port);
             if (holder != null)
             {
                 s.State = ServiceState.Crashed;
-                s.Logs.Add($"[91m[runner] port {port} is in use by {holder}. Stop it, then start {s.Name} again.[0m");
-                Notice?.Invoke(new RunnerNotice(Project.Name, s.Name, $"port {port} is in use by {holder}", true));
-                RaiseChanged();
+                s.Logs.Add($"\x1b[91m[runner] port {port} is in use by {holder}. Stop it, then start {s.Name} again.\x1b[0m");
+                s.LastProblem = $"port {port} is in use by {holder}";
+                Notice?.Invoke(new RunnerNotice(Project.Name, s.Name, s.LastProblem));
                 return;
             }
 
@@ -36,8 +37,8 @@ namespace mk.dev.runner.core
             {
                 s.State = ServiceState.Crashed;
                 s.Logs.Add($"\x1b[91m[runner] folder not found: {dir}\x1b[0m");
-                Notice?.Invoke(new RunnerNotice(Project.Name, s.Name, "folder not found", true));
-                RaiseChanged();
+                s.LastProblem = "folder not found";
+                Notice?.Invoke(new RunnerNotice(Project.Name, s.Name, s.LastProblem));
                 return;
             }
 
@@ -47,7 +48,6 @@ namespace mk.dev.runner.core
             {
                 s.State = ServiceState.Crashed;
                 s.Logs.Add($"\x1b[91m[runner] {e.Message}\x1b[0m");
-                RaiseChanged();
                 return;
             }
 
@@ -91,10 +91,11 @@ namespace mk.dev.runner.core
                 job.Dispose();
                 s.State = ServiceState.Crashed;
                 s.Logs.Add($"\x1b[91m[runner] failed to start: {e.Message}\x1b[0m");
-                RaiseChanged();
                 return;
             }
             var sp = new ServiceProcess(p, job, job.TryAssign(p));
+            if (!sp.InJob || !job.KillOnClose)
+                s.Logs.Add($"\x1b[33m[runner] couldn't fully attach {s.Name} to Dev Runner, so if Dev Runner crashes it may keep running\x1b[0m");
             s.Proc = sp;
             s.StartedEnv = userEnv;
             try { p.StandardInput.Close(); } catch { }
@@ -113,7 +114,8 @@ namespace mk.dev.runner.core
                 if (s.Proc == sp && s.State is ServiceState.Starting or ServiceState.Restarting)
                 {
                     s.State = ServiceState.Running;
-                    RaiseChanged();
+                    s.NoReadyLine = true;
+                    s.Logs.Add($"\x1b[33m[runner] still running after {timeout.TotalSeconds:0} s but never printed its ready line. Check the log, or set readyPattern.\x1b[0m");
                 }
             });
         }
@@ -126,25 +128,28 @@ namespace mk.dev.runner.core
             var plain = Ansi.Strip(line);
             if (s.Fail != null && s.Fail.IsMatch(plain))
             {
+                var crashed = plain.Contains("exited with error code", StringComparison.OrdinalIgnoreCase);
+                var state = crashed ? ServiceState.Crashed : ServiceState.Failed;
                 _q.Post(() =>
                 {
-                    if (s.Proc != sp || s.State == ServiceState.Failed)
+                    if (s.Proc != sp || s.State == state)
                         return;
-                    s.State = ServiceState.Failed;
-                    Notice?.Invoke(new RunnerNotice(Project.Name, s.Name, "build failed — waiting for a file change", true));
-                    RaiseChanged();
+                    s.State = state;
+                    var message = crashed ? "crashed — waiting for a file change" : "build failed — waiting for a file change";
+                    s.LastProblem = message;
+                    Notice?.Invoke(new RunnerNotice(Project.Name, s.Name, s.LastProblem));
                 });
             }
-            else if (s.State is ServiceState.Starting or ServiceState.Restarting or ServiceState.Failed
+            else if (s.State is ServiceState.Starting or ServiceState.Restarting or ServiceState.Failed or ServiceState.Crashed
                      && (s.Ready == null || s.Ready.IsMatch(plain)))
             {
                 _q.Post(() =>
                 {
-                    if (s.Proc != sp || s.State is not (ServiceState.Starting or ServiceState.Restarting or ServiceState.Failed))
+                    if (s.Proc != sp || s.State is not (ServiceState.Starting or ServiceState.Restarting or ServiceState.Failed or ServiceState.Crashed))
                         return;
                     s.State = ServiceState.Running;
+                    s.NoReadyLine = false;
                     s.ReadyTimer?.Dispose(); s.ReadyTimer = null;
-                    RaiseChanged();
                 });
             }
         }
@@ -153,7 +158,7 @@ namespace mk.dev.runner.core
         {
             Task.Run(() =>
             {
-                int code = -1;
+                var code = -1;
                 try
                 {
                     if (sp.InJob)
@@ -174,10 +179,11 @@ namespace mk.dev.runner.core
             try { sp.Job.Dispose(); } catch { }
             try { sp.P.Dispose(); } catch { }
 
-            bool current = s.Proc == sp;
+            var current = s.Proc == sp;
             if (current) { s.Proc = null; s.ReadyTimer?.Dispose(); s.ReadyTimer = null; s.Metrics = ServiceMetrics.Empty; }
 
-            if (sp.KillReason == "restart") { RaiseChanged(); return; }
+            if (sp.KillReason == "restart")
+                return;
 
             if (sp.KillReason == "stop" || s.Stopped)
             {
@@ -185,7 +191,6 @@ namespace mk.dev.runner.core
                     s.State = IsEnabled(s) ? ServiceState.Stopped : ServiceState.Disabled;
                 if (s.Proc == null && SessionActive)
                     s.Logs.Add("\x1b[2m[runner] stopped.\x1b[0m");
-                RaiseChanged();
                 return;
             }
             if (!current)
@@ -196,12 +201,13 @@ namespace mk.dev.runner.core
             {
                 var ran = DateTime.Now - sp.StartedAt;
                 s.Fails = ran.TotalMilliseconds < 8000 ? s.Fails + 1 : 0;
-                int max = Math.Max(1, g.MaxRetries);
+                var max = Math.Max(1, g.MaxRetries);
                 if (s.Fails > max)
                 {
                     s.State = ServiceState.Crashed;
                     s.Logs.Add($"\x1b[91m[runner] crashed {s.Fails}× — stopped. Fix it, then restart.\x1b[0m");
-                    Notice?.Invoke(new RunnerNotice(Project.Name, s.Name, $"crashed {s.Fails} times — stopped", true));
+                    s.LastProblem = $"crashed {s.Fails} times — stopped";
+                    Notice?.Invoke(new RunnerNotice(Project.Name, s.Name, s.LastProblem));
                 }
                 else
                 {
@@ -220,9 +226,9 @@ namespace mk.dev.runner.core
             {
                 s.State = ServiceState.Crashed;
                 s.Logs.Add($"\x1b[91m[runner] exited ({code}) — stopped. Read the error above, then restart.\x1b[0m");
-                Notice?.Invoke(new RunnerNotice(Project.Name, s.Name, $"exited with code {code}", true));
+                s.LastProblem = $"exited with code {code}";
+                Notice?.Invoke(new RunnerNotice(Project.Name, s.Name, s.LastProblem));
             }
-            RaiseChanged();
         }
 
         private void StopCore(ServiceRunner s)
@@ -247,7 +253,6 @@ namespace mk.dev.runner.core
                 s.Logs.Add("\x1b[2m[runner] rebuild + restart…\x1b[0m");
                 s.State = ServiceState.Building;
                 EnsureDepGraph();
-                RaiseChanged();
                 TriggerBuild([s.Index], false);
                 return;
             }
@@ -267,19 +272,18 @@ namespace mk.dev.runner.core
             try { Project.SetEnabled(s.Config, enable); }
             catch (InvalidOperationException e)
             {
-                s.Logs.Add($"[91m[runner] {e.Message}[0m");
+                s.Logs.Add($"\x1b[91m[runner] {e.Message}\x1b[0m");
                 return;
             }
             if (enable)
             {
                 s.Fails = 0;
-                if (!SessionActive) { s.State = ServiceState.Stopped; RaiseChanged(); return; }
+                if (!SessionActive) { s.State = ServiceState.Stopped; return; }
                 s.Stopped = false;
                 if (IsManaged && s.Config.IsDotnet)
                 {
                     EnsureDepGraph();
                     s.State = ServiceState.Building;
-                    RaiseChanged();
                     TriggerBuild([s.Index], false);
                 }
                 else
@@ -291,7 +295,6 @@ namespace mk.dev.runner.core
                 s.State = ServiceState.Disabled;
                 s.Logs.Add("\x1b[90m[runner] disabled.\x1b[0m");
             }
-            RaiseChanged();
         }
 
         private Dictionary<string, string> UserEnv(ServiceRunner s)
@@ -371,7 +374,7 @@ namespace mk.dev.runner.core
             ready ??= c.IsNpm ? new Regex(@"ready in|- local:|started server|compiled|localhost:\d+", RegexOptions.IgnoreCase)
                     : c.IsDotnet ? new Regex(@"now listening on|application started", RegexOptions.IgnoreCase)
                     : null;
-            var fail = c.IsDotnet ? new Regex(@"waiting for a file to change|build failed", RegexOptions.IgnoreCase) : null;
+            var fail = c.IsDotnet ? new Regex(@"build failed|exited with error code", RegexOptions.IgnoreCase) : null;
             return (ready, fail, badPattern);
         }
     }

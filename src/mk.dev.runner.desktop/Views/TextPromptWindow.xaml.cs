@@ -23,6 +23,11 @@ namespace mk.dev.runner.desktop.Views
 
         private void Ok_Click(object sender, RoutedEventArgs e)
         {
+            if (Value.Text.Trim().Length == 0)
+            {
+                Value.Focus();
+                return;
+            }
             DialogResult = true;
         }
     }

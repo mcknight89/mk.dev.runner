@@ -22,8 +22,7 @@ namespace mk.dev.runner.desktop.Updates
         public Updater(AppSettings settings)
         {
             _settings = settings;
-            try { IsInstalled = new UpdateManager(new GithubSource(RepoUrl, null, false)).IsInstalled; }
-            catch { IsInstalled = false; }
+            IsInstalled = Installed();
             CurrentVersion = InstalledVersion() ?? AssemblyVersion();
             Status = IsInstalled ? "" : "Updates work once Dev Runner is installed with its Setup.exe.";
             _timer = new DispatcherTimer { Interval = CheckEvery };
@@ -31,6 +30,17 @@ namespace mk.dev.runner.desktop.Updates
         }
 
         public bool IsInstalled { get; }
+
+        public static bool Installed()
+        {
+            try { return Plain().IsInstalled; }
+            catch { return false; }
+        }
+
+        private static UpdateManager Plain()
+        {
+            return new UpdateManager(new GithubSource(RepoUrl, null, false));
+        }
 
         public bool WantsDev => _settings.UpdateChannel is { } chosen ? chosen == DevChannel : CurrentVersion.Contains("-dev");
         public string CurrentVersion { get; }
@@ -57,9 +67,10 @@ namespace mk.dev.runner.desktop.Updates
 
         private UpdateManager Manager()
         {
-            bool dev = WantsDev;
+            var dev = WantsDev;
+            var switching = dev != CurrentVersion.Contains("-dev");
             var source = new GithubSource(RepoUrl, accessToken: null, prerelease: dev);
-            var options = new UpdateOptions { ExplicitChannel = dev ? DevChannel : StableChannel, AllowVersionDowngrade = true };
+            var options = new UpdateOptions { ExplicitChannel = dev ? DevChannel : StableChannel, AllowVersionDowngrade = switching };
             return new UpdateManager(source, options);
         }
 
@@ -115,7 +126,7 @@ namespace mk.dev.runner.desktop.Updates
 
         private static string? InstalledVersion()
         {
-            try { return new UpdateManager(new GithubSource(RepoUrl, null, false)).CurrentVersion?.ToString(); }
+            try { return Plain().CurrentVersion?.ToString(); }
             catch { return null; }
         }
 

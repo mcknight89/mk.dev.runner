@@ -14,14 +14,16 @@
         <Border Background="{StaticResource Panel}" BorderBrush="{StaticResource Border}" BorderThickness="0,0,1,0">
             <DockPanel>
                 <StackPanel DockPanel.Dock="Top" Margin="16,16,16,10">
-                    <TextBlock Text="Dev Runner" FontSize="17" FontWeight="SemiBold"/>
+                    <TextBlock x:Name="AppTitle" Text="Dev Runner" FontSize="17" FontWeight="SemiBold"/>
                     <TextBlock Text="Projects" Foreground="{StaticResource Faint}" Margin="0,10,0,0" FontSize="11"/>
                 </StackPanel>
                 <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="10">
                     <Button Content="+ Add" Command="{Binding AddProject}" ToolTip="Add a project folder (its config is found in its root)"/>
-                    <Button Content="Import folder" Command="{Binding ImportFolder}" Margin="6,0,0,0" ToolTip="Add every project in a folder and its subfolders"/>
+                    <Button Content="Import folder" Command="{Binding ImportFolder}" Margin="6,0,0,0" ToolTip="Add every project in a folder and the folders directly inside it"/>
                     <Button Style="{StaticResource Icon}" Content="&#xE713;" Command="{Binding OpenSettings}" Margin="6,0,0,0" ToolTip="Settings"/>
                 </StackPanel>
+                <TextBlock DockPanel.Dock="Bottom" Text="{Binding Updates.Status}" Foreground="{StaticResource Faint}" FontSize="11"
+                           TextWrapping="Wrap" Margin="12,4,12,0" Visibility="{Binding Updates.HasUpdate, Converter={StaticResource Vis}}"/>
                 <Button DockPanel.Dock="Bottom" Style="{StaticResource Primary}" Margin="10,0,10,0" Command="{Binding InstallUpdate}"
                         Visibility="{Binding Updates.HasUpdate, Converter={StaticResource Vis}}" ToolTip="{Binding Updates.Status}">
                     <TextBlock>
@@ -43,7 +45,8 @@
                                     <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
                                     <TextBlock Text="{Binding StatusText}" Foreground="{StaticResource Muted}" FontSize="11.5" TextTrimming="CharacterEllipsis"/>
                                 </StackPanel>
-                                <TextBlock Grid.Column="2" Text="{Binding MemoryText}" Foreground="{StaticResource Muted}" FontSize="11.5" Margin="6,1,0,0"/>
+                                <TextBlock Grid.Column="2" Text="{Binding MemoryText}" Foreground="{StaticResource Muted}" FontSize="11.5" Margin="6,1,0,0"
+                                           MinWidth="48" TextAlignment="Right"/>
                             </Grid>
                         </DataTemplate>
                     </ListBox.ItemTemplate>
@@ -99,7 +102,8 @@
                     <Button Content="Restart all" Command="{Binding RestartAll}" Margin="6,0,0,0"/>
                     <Button Content="Clean rebuild" Command="{Binding CleanRebuild}" Margin="6,0,0,0"
                             Visibility="{Binding IsManaged, Converter={StaticResource Vis}}"/>
-                    <Button Content="Edit" Command="{Binding EditProject}" Margin="6,0,0,0" ToolTip="Edit the project's settings and services"/>
+                    <Button Content="Edit" Command="{Binding EditProject}" Margin="6,0,0,0" ToolTipService.ShowOnDisabled="True"
+                            ToolTip="Edit the project's settings and services. Stop the project first."/>
                     <Button Content="Environment" Command="{Binding EditEnv}" Margin="6,0,0,0" ToolTip="Edit environment variables"/>
                     <Button x:Name="MoreButton" Style="{StaticResource Icon}" Content="&#xE712;" Margin="6,0,0,0" ToolTip="More" Click="More_Click">
                         <Button.ContextMenu>
@@ -128,17 +132,20 @@
 
             <!-- service cards -->
             <ListBox Grid.Row="2" ItemsSource="{Binding Services}" SelectedItem="{Binding SelectedService}" Margin="14,0,14,8"
-                     ScrollViewer.HorizontalScrollBarVisibility="Disabled" MaxHeight="420">
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled" MaxHeight="560">
                 <ListBox.ItemsPanel>
-                    <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
+                    <ItemsPanelTemplate>
+                        <UniformGrid VerticalAlignment="Top"
+                                     Columns="{Binding ActualWidth, RelativeSource={RelativeSource AncestorType=ListBox}, Converter={StaticResource CardColumns}}"/>
+                    </ItemsPanelTemplate>
                 </ListBox.ItemsPanel>
                 <ListBox.ItemContainerStyle>
                     <Style TargetType="ListBoxItem">
-                        <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+                        <Setter Property="FocusVisualStyle" Value="{StaticResource KeyboardFocus}"/>
                         <Setter Property="Template">
                             <Setter.Value>
                                 <ControlTemplate TargetType="ListBoxItem">
-                                    <Border x:Name="card" Width="318" Margin="6" CornerRadius="8" Background="{StaticResource Card}"
+                                    <Border x:Name="card" Margin="6" CornerRadius="8" Background="{StaticResource Card}"
                                             BorderBrush="{StaticResource Border}" BorderThickness="1" Cursor="Hand">
                                         <ContentPresenter/>
                                     </Border>
@@ -179,11 +186,7 @@
                                               Foreground="{StaticResource Muted}" FontSize="11.5"
                                               ToolTip="Enabled on this machine. Off means Start all skips it until you turn it back on (it's saved). To stop it just for now, use Stop."/>
                                 </Grid>
-                                <TextBlock Margin="17,2,0,0" FontSize="12">
-                                    <Run Text="{Binding StateText, Mode=OneWay}" Foreground="{Binding StateBrush, Mode=OneWay}"/>
-                                    <Run Text="·" Foreground="{StaticResource Faint}"/>
-                                    <Run Text="{Binding TypeText, Mode=OneWay}" Foreground="{StaticResource Faint}"/>
-                                </TextBlock>
+                                <TextBlock Margin="17,2,0,0" FontSize="12" Text="{Binding StateText}" Foreground="{Binding StateBrush}"/>
                                 <Grid Margin="0,10,0,0" ToolTip="{Binding ProcessTip}">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*"/>
@@ -218,9 +221,9 @@
                                         </Button.Style>
                                     </Button>
                                     <Button Content="Restart" Command="{Binding Restart}" Padding="10,3" Margin="6,0,0,0"/>
-                                    <Button Style="{StaticResource Icon}" Content="&#xE774;" Command="{Binding OpenUrl}" Margin="6,0,0,0" ToolTip="Open in browser"/>
-                                    <Button Style="{StaticResource Icon}" Content="&#xE8A5;" Command="{Binding OpenLog}" ToolTip="Open this run's log file"/>
-                                    <Button Style="{StaticResource Icon}" Content="&#xE838;" Command="{Binding OpenFolder}" ToolTip="Open folder"/>
+                                    <Button Content="Browser" Command="{Binding OpenUrl}" Padding="7,3" Margin="6,0,0,0" ToolTip="Open in browser"/>
+                                    <Button Content="Log" Command="{Binding OpenLog}" Padding="7,3" Margin="4,0,0,0" ToolTip="Open this run's log file"/>
+                                    <Button Content="Folder" Command="{Binding OpenFolder}" Padding="7,3" Margin="4,0,0,0" ToolTip="Open the service's folder"/>
                                 </StackPanel>
                             </StackPanel>
                         </Grid>
@@ -228,7 +231,8 @@
                 </ListBox.ItemTemplate>
             </ListBox>
 
-            <GridSplitter Grid.Row="3" HorizontalAlignment="Stretch" Background="{StaticResource Border}" Height="1" VerticalAlignment="Center"/>
+            <Border Grid.Row="3" Background="{StaticResource Border}" Height="1" VerticalAlignment="Center"/>
+            <GridSplitter Grid.Row="3" HorizontalAlignment="Stretch" Background="Transparent" Height="5" ResizeDirection="Rows" Cursor="SizeNS"/>
 
             <!-- logs -->
             <DockPanel Grid.Row="4">
@@ -238,7 +242,7 @@
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <ListBox ItemsSource="{Binding LogSources}" SelectedItem="{Binding SelectedLog}" ItemContainerStyle="{StaticResource TabItem}"
-                             ScrollViewer.HorizontalScrollBarVisibility="Hidden" Margin="10,0,0,0">
+                             ScrollViewer.HorizontalScrollBarVisibility="Auto" ScrollViewer.VerticalScrollBarVisibility="Disabled" Margin="10,0,0,0">
                         <ListBox.ItemsPanel>
                             <ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate>
                         </ListBox.ItemsPanel>
@@ -257,6 +261,7 @@
                         <Button Style="{StaticResource Icon}" Content="&#xE894;" Command="{Binding ClearLog}" ToolTip="Clear this view"/>
                     </StackPanel>
                 </Grid>
+                <Grid>
                 <c:LogListBox x:Name="Log" ItemsSource="{Binding SelectedLog.Lines}" Background="{StaticResource LogBg}" BorderThickness="0"
                               FontFamily="{StaticResource Mono}" FontSize="12" Padding="8,4"
                               VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"
@@ -267,6 +272,23 @@
                         </DataTemplate>
                     </c:LogListBox.ItemTemplate>
                 </c:LogListBox>
+                <TextBlock Text="No output yet. Start a service to see its log here." Foreground="{StaticResource Faint}"
+                           HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding SelectedLog.Lines.Count}" Value="0">
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding SelectedLog}" Value="{x:Null}">
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+                </Grid>
             </DockPanel>
         </Grid>
 

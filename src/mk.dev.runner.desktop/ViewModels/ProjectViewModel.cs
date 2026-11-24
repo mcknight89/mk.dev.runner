@@ -20,7 +20,7 @@ namespace mk.dev.runner.desktop.ViewModels
                 Attach(p);
             BuildServices();
 
-            StartAll = new Command(() => RunGuarded(() => Runner!.Start()), () => Runner != null && !_busy);
+            StartAll = new Command(() => RunBackground(() => Runner!.Start(), "Starting…"), () => Runner != null && !_busy && Services.Count > 0);
             StopAll = new Command(() => RunBackground(() => Runner!.StopAll(), "Stopping…"), () => Runner?.SessionActive == true && !_busy);
             RestartAll = new Command(() => Runner!.RestartAll(), () => Runner?.SessionActive == true);
             CleanRebuild = new Command(() => Runner!.CleanRebuild(), () => Runner?.IsManaged == true);
@@ -37,7 +37,7 @@ namespace mk.dev.runner.desktop.ViewModels
             ViewBuildLog = new Command(() => { if (Runner is { } r) Shell.OpenInEditor(r.BuildLogFile); },
                                        () => Runner?.IsManaged == true);
             Rename = new Command(DoRename);
-            EditProject = new Command(DoEditProject, () => Runner != null);
+            EditProject = new Command(DoEditProject, () => Runner != null && !Runner.SessionActive);
             Reload = new Command(ReloadConfig, () => Runner?.SessionActive != true);
             ClearLog = new Command(() => SelectedLog?.Clear());
             Remove = new Command(() => { _main.Selected = this; _main.RemoveProject.Execute(null); }, () => Runner?.SessionActive != true);
@@ -169,18 +169,18 @@ namespace mk.dev.runner.desktop.ViewModels
             if (Runner == null)
             {
                 StatusText = Error ?? "";
-                StatusBrush = Brushes.IndianRed;
+                StatusBrush = Palette.Brush(Palette.Bad);
                 return;
             }
             foreach (var s in Services) s.Refresh();
             if (pullLogs)
                 SelectedLog?.Pull();
 
-            int total = Services.Count(s => s.Enabled);
-            int running = RunningCount;
-            bool busy = Services.Any(s => s.IsBusy) || Runner.IsBuilding;
+            var total = Services.Count(s => s.Enabled);
+            var running = RunningCount;
+            var busy = Services.Any(s => s.IsBusy) || Runner.IsBuilding;
             IsActive = Runner.SessionActive && (running > 0 || busy || Services.Any(s => s.IsActive));
-            long mem = Runner.TotalWorkingSet;
+            var mem = Runner.TotalWorkingSet;
             MemoryText = mem > 0 ? Format.Bytes(mem) : "";
 
             if (!Runner.SessionActive) { StatusText = $"{Services.Count} service{(Services.Count == 1 ? "" : "s")} · stopped"; StatusBrush = Palette.Brush(Palette.Off); }

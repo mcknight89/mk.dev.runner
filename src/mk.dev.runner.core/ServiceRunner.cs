@@ -7,61 +7,6 @@ using mk.dev.runner.core.Native;
 
 namespace mk.dev.runner.core
 {
-    public enum ServiceState { Disabled, Stopped, Starting, Running, Building, Restarting, Retrying, Crashed, Failed }
-
-    public enum BuildState { Idle, Building, Ok, Failed }
-
-    public sealed record ServiceMetrics(long WorkingSet, long PrivateBytes, double CpuPercent,
-                                        IReadOnlyList<ProcessSample> Processes, IReadOnlyList<int> Ports)
-    {
-        public static readonly ServiceMetrics Empty = new(0, 0, 0, [], []);
-        public int ProcessCount => Processes.Count;
-    }
-
-    public sealed record RunnerNotice(string Project, string? Service, string Message, bool IsError);
-
-    internal sealed class ServiceProcess
-    {
-        public ServiceProcess(Process process, JobObject job, bool inJob)
-        {
-            P = process;
-            Job = job;
-            InJob = inJob;
-        }
-
-        public Process P { get; }
-        public JobObject Job { get; }
-        public bool InJob { get; }
-        public string? KillReason { get; set; }
-        public bool ExitHandled { get; set; }
-        public DateTime StartedAt { get; } = DateTime.Now;
-        public TimeSpan LastCpu { get; set; }
-        public DateTime LastSampleAt { get; set; } = DateTime.Now;
-
-        public string? Kill(string reason, bool wait)
-        {
-            KillReason ??= reason;
-            try
-            {
-                if (InJob)
-                    Job.Terminate();
-                else
-                    P.Kill(entireProcessTree: true);
-                if (wait)
-                    P.WaitForExit(5000);
-                return null;
-            }
-            catch (InvalidOperationException)
-            {
-                return null;
-            }
-            catch (Exception e)
-            {
-                return e.Message;
-            }
-        }
-    }
-
     public sealed class ServiceRunner
     {
         private const int HistoryLength = 90;
@@ -97,6 +42,10 @@ namespace mk.dev.runner.core
         internal Dictionary<string, string>? StartedEnv { get; set; }
         internal Regex? Ready { get; set; }
         internal Regex? Fail { get; set; }
+
+        public bool NoReadyLine { get; internal set; }
+
+        public string? LastProblem { get; internal set; }
 
         internal void CancelTimers()
         {
@@ -135,21 +84,5 @@ namespace mk.dev.runner.core
         }
 
         public bool IsBusy => State is ServiceState.Starting or ServiceState.Building or ServiceState.Restarting or ServiceState.Retrying;
-    }
-
-    public static class Format
-    {
-        public static string Bytes(long b)
-        {
-            return b <= 0 ? "—" : b.BytesToString();
-        }
-
-        public static string Duration(TimeSpan t)
-        {
-            return t.TotalSeconds < 60 ? $"{t.Seconds}s"
-            : t.TotalMinutes < 60 ? $"{(int)t.TotalMinutes}m {t.Seconds:00}s"
-            : t.TotalHours < 24 ? $"{(int)t.TotalHours}h {t.Minutes:00}m"
-            : $"{(int)t.TotalDays}d {t.Hours}h";
-        }
     }
 }

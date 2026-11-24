@@ -88,7 +88,7 @@ namespace mk.dev.runner.desktop.ViewModels
 
         public bool WindowVisible { get; set; } = true;
 
-        public event Action<string, string, bool>? NoticeRaised;
+        public event Action<string, string>? NoticeRaised;
         public event Action<string, bool, bool>? SummaryChanged;
 
         private void DoAddProject()
@@ -100,7 +100,7 @@ namespace mk.dev.runner.desktop.ViewModels
             try
             {
                 Project project;
-                bool openEditor = false;
+                var openEditor = false;
                 try { project = Settings.Add(folder); }
                 catch (ConfigNotFoundException nf)
                 {
@@ -108,13 +108,13 @@ namespace mk.dev.runner.desktop.ViewModels
                     if (nf.Candidates.Count == 0)
                     {
                         var pick = ChoiceAsk($"There's no config file in {folder}.\n\nPick the config file if it has another name, or create {Project.FolderConfigName} and fill in the services.",
-                                             "Pick the config file…", $"Create {Project.FolderConfigName}");
-                        if (pick == 1)
+                                             $"Create {Project.FolderConfigName}", "Pick the config file…");
+                        if (pick == 0)
                         {
                             file = Project.CreateNew(folder);
                             openEditor = true;
                         }
-                        else if (pick == 0)
+                        else if (pick == 1)
                             file = PickConfig(folder);
                     }
                     else

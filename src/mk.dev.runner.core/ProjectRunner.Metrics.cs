@@ -10,6 +10,17 @@ namespace mk.dev.runner.core
 {
     public sealed partial class ProjectRunner
     {
+        private void QueueMetrics()
+        {
+            if (Interlocked.Exchange(ref _metricsQueued, 1) == 1)
+                return;
+            _q.Post(() =>
+            {
+                _metricsQueued = 0;
+                SampleMetrics();
+            });
+        }
+
         private void SampleMetrics()
         {
             if (!SessionActive)
@@ -17,7 +28,7 @@ namespace mk.dev.runner.core
             List<(int Pid, int Port)> listeners;
             try { listeners = TcpListeners.All(); } catch { listeners = []; }
             var now = DateTime.Now;
-            int cores = Environment.ProcessorCount;
+            var cores = Environment.ProcessorCount;
 
             foreach (var s in _services)
             {
@@ -38,7 +49,7 @@ namespace mk.dev.runner.core
                     if (ProcessInfo.Sample(pid) is { } ps && !ps.Name.Equals("conhost.exe", StringComparison.OrdinalIgnoreCase))
                         samples.Add(ps);
 
-                double cpuPct = 0;
+                var cpuPct = 0.0;
                 if (sp.InJob)
                 {
                     var cpu = sp.Job.TotalCpu();
@@ -56,7 +67,6 @@ namespace mk.dev.runner.core
                                                samples.OrderByDescending(x => x.WorkingSet).ToList(), ports);
                 s.PushHistory(ws);
             }
-            MetricsUpdated?.Invoke();
         }
     }
 }

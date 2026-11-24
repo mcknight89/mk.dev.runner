@@ -46,6 +46,8 @@ namespace mk.dev.runner.desktop.ViewModels
         private void Refresh()
         {
             _tick++;
+            if (!WindowVisible && _tick % 4 != 0)
+                return;
             foreach (var p in Projects) p.Refresh(WindowVisible && p == Selected);
             if (_tick % 4 == 0)
             {
@@ -59,10 +61,21 @@ namespace mk.dev.runner.desktop.ViewModels
 
         public void OnNotice(ProjectViewModel p, RunnerNotice n)
         {
-            if (!Settings.Notifications || !n.IsError)
+            if (!Settings.Notifications)
                 return;
             Application.Current?.Dispatcher.BeginInvoke(() =>
-                NoticeRaised?.Invoke(n.Service == null ? p.Name : $"{p.Name} · {n.Service}", n.Message, n.IsError));
+            {
+                LastNoticeProject = p;
+                NoticeRaised?.Invoke(n.Service == null ? p.Name : $"{p.Name} · {n.Service}", n.Message);
+            });
+        }
+
+        public ProjectViewModel? LastNoticeProject { get; private set; }
+
+        public void ShowLastNotice()
+        {
+            if (LastNoticeProject != null && Projects.Contains(LastNoticeProject))
+                Selected = LastNoticeProject;
         }
 
         public void SaveSettings()

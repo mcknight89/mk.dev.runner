@@ -15,7 +15,7 @@ namespace mk.dev.runner.core.Logs
 
         public static string Sanitize(string s)
         {
-            bool clean = true;
+            var clean = true;
             foreach (var ch in s)
                 if (ch < 0x20 && ch != '\x1b' || ch == '\x7f') { clean = false; break; }
             if (clean && s.IndexOf('\x1b') < 0)
@@ -30,7 +30,7 @@ namespace mk.dev.runner.core.Logs
                     char n = s[i + 1];
                     if (n == '[')
                     {
-                        int j = i + 2;
+                        var j = i + 2;
                         while (j < s.Length && s[j] is >= '0' and <= '?') j++;
                         while (j < s.Length && s[j] is >= ' ' and <= '/') j++;
                         if (j < s.Length)
@@ -45,7 +45,7 @@ namespace mk.dev.runner.core.Logs
                     }
                     if (n == ']')
                     {
-                        int j = i + 2;
+                        var j = i + 2;
                         while (j < s.Length && s[j] != '\x07' && !(s[j] == '\x1b' && j + 1 < s.Length && s[j + 1] == '\\')) j++;
                         i = j < s.Length && s[j] == '\x1b' ? j + 1 : j;
                         continue;
@@ -73,11 +73,11 @@ namespace mk.dev.runner.core.Logs
         {
             var list = new List<Segment>();
             int? fg = null, bg = null; bool bold = false, dim = false;
-            int start = 0;
+            var start = 0;
             var m = Sgr().Match(s);
             while (true)
             {
-                int end = m.Success ? m.Index : s.Length;
+                var end = m.Success ? m.Index : s.Length;
                 if (end > start)
                     list.Add(new Segment(s[start..end], fg, bg, bold, dim));
                 if (!m.Success)

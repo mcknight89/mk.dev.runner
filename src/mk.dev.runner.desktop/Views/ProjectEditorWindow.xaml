@@ -5,7 +5,7 @@
         Style="{StaticResource DarkWindow}" WindowStartupLocation="CenterOwner" ShowInTaskbar="False">
     <Window.Resources>
         <DataTemplate x:Key="DarkText">
-            <TextBlock Text="{Binding}" Foreground="Black"/>
+            <TextBlock Text="{Binding}"/>
         </DataTemplate>
         <Style x:Key="Label" TargetType="TextBlock">
             <Setter Property="Foreground" Value="{StaticResource Muted}"/>
@@ -125,7 +125,7 @@
                                     <DataTemplate>
                                         <StackPanel Orientation="Horizontal">
                                             <Border Width="12" Height="12" CornerRadius="3" Margin="0,0,8,0" Background="{Binding Converter={StaticResource ColorName}}"/>
-                                            <TextBlock Text="{Binding}" Foreground="Black"/>
+                                            <TextBlock Text="{Binding}"/>
                                         </StackPanel>
                                     </DataTemplate>
                                 </ComboBox.ItemTemplate>

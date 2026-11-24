@@ -8,6 +8,7 @@ namespace mk.dev.runner.core.Logs
         private readonly List<LogLine> _lines = [];
         private long _seq;
         private StreamWriter? _file;
+        private Timer? _flush;
 
         public int MaxLines { get; set; }
 
@@ -15,8 +16,6 @@ namespace mk.dev.runner.core.Logs
         {
             MaxLines = Math.Max(100, maxLines);
         }
-
-        public event Action<LogLine>? LineAdded;
 
         public long LastSeq { get { lock (_gate) return _seq; } }
 
@@ -30,12 +29,11 @@ namespace mk.dev.runner.core.Logs
             {
                 line = new LogLine(++_seq, DateTime.Now, text);
                 _lines.Add(line);
-                int over = _lines.Count - MaxLines;
+                var over = _lines.Count - MaxLines;
                 if (over > 0)
                     _lines.RemoveRange(0, over);
                 try { _file?.WriteLine(LogFiles.Format(line)); } catch { }
             }
-            LineAdded?.Invoke(line);
         }
 
         public List<LogLine> Since(long afterSeq, out bool reset)
@@ -43,7 +41,7 @@ namespace mk.dev.runner.core.Logs
             lock (_gate)
             {
                 reset = _lines.Count > 0 && _lines[0].Seq > afterSeq + 1 && afterSeq != 0;
-                int i = _lines.FindIndex(l => l.Seq > afterSeq);
+                var i = _lines.FindIndex(l => l.Seq > afterSeq);
                 return i < 0 ? [] : _lines.GetRange(i, _lines.Count - i);
             }
         }
@@ -53,15 +51,6 @@ namespace mk.dev.runner.core.Logs
             lock (_gate) return [.. _lines];
         }
 
-        public List<LogLine> Range(int start, int count)
-        {
-            lock (_gate)
-            {
-                start = Math.Clamp(start, 0, _lines.Count);
-                count = Math.Clamp(count, 0, _lines.Count - start);
-                return _lines.GetRange(start, count);
-            }
-        }
 
         public void Clear()
         {
@@ -79,9 +68,11 @@ namespace mk.dev.runner.core.Logs
                     Directory.CreateDirectory(System.IO.Path.GetDirectoryName(path)!);
                     _file = new StreamWriter(new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete))
                     {
-                        AutoFlush = true,
+                        AutoFlush = false,
                     };
                     _file.WriteLine("# " + header);
+                    _file.Flush();
+                    _flush = new Timer(_ => Flush(), null, 1000, 1000);
                     Path = path;
                 }
                 catch (Exception e)
@@ -101,8 +92,20 @@ namespace mk.dev.runner.core.Logs
             lock (_gate) CloseFileLocked();
         }
 
+        private void Flush()
+        {
+            lock (_gate)
+            {
+                try { _file?.Flush(); }
+                catch (IOException) { }
+                catch (ObjectDisposedException) { }
+            }
+        }
+
         private void CloseFileLocked()
         {
+            _flush?.Dispose();
+            _flush = null;
             try { _file?.Dispose(); } catch { }
             _file = null;
             Path = null;

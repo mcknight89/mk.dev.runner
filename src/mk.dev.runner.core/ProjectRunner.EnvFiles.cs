@@ -41,20 +41,26 @@ namespace mk.dev.runner.core
         private void StopEnvWatchers()
         {
             _envDebounce?.Dispose(); _envDebounce = null;
+            _envChangedAt = null;
             foreach (var w in _envWatchers) w.Dispose();
             _envWatchers.Clear();
         }
 
         private void OnEnvFileChanged()
         {
+            _envChangedAt ??= DateTime.Now;
             _envDebounce?.Dispose();
             _envDebounce = _q.After(TimeSpan.FromMilliseconds(300), () =>
             {
+                var changedAt = _envChangedAt ?? DateTime.Now;
+                _envChangedAt = null;
                 if (!SessionActive)
                     return;
                 var managed = new HashSet<int>();
                 foreach (var s in _services.Where(s => s.Config.IsDotnet && IsEnabled(s) && !s.Stopped))
                 {
+                    if (s.IsBusy || s.StartedAt > changedAt.AddSeconds(-1))
+                        continue;
                     s.Logs.Add("\x1b[33m[runner] .env changed — restarting…\x1b[0m");
                     if (IsManaged) { managed.Add(s.Index); s.State = ServiceState.Building; }
                     else
@@ -62,7 +68,6 @@ namespace mk.dev.runner.core
                 }
                 if (managed.Count > 0)
                     TriggerBuild(managed, false);
-                RaiseChanged();
             });
         }
     }

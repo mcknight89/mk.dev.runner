@@ -59,12 +59,7 @@ namespace mk.dev.runner.desktop.ViewModels
             catch (Exception e) { MessageBox.Show(e.Message, "Couldn't reload config"); }
         }
 
-        public void RunGuarded(Action action)
-        {
-            RunBackground(action, "Starting…");
-        }
-
-        private void RunBackground(Action action, string text)
+        public void RunBackground(Action action, string text)
         {
             _busy = true;
             BusyText = text;

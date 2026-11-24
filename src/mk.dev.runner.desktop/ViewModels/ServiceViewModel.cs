@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Windows;
+using System.Windows.Input;
 using System.Windows.Media;
 using mk.dev.runner.core;
 
@@ -24,9 +25,9 @@ namespace mk.dev.runner.desktop.ViewModels
                 if (S.HasProcess || S.IsBusy)
                     _runner.StopService(S.Index);
                 else
-                    _owner.RunGuarded(() => _runner.StartService(S.Index));
+                    _owner.RunBackground(() => _runner.StartService(S.Index), "Starting…");
             });
-            Restart = new Command(() => _runner.RestartService(S.Index));
+            Restart = new Command(() => _runner.RestartService(S.Index), () => S.HasProcess || S.IsBusy);
             OpenUrl = new Command(() => { if (_runner.UrlOf(S) is { } u) Shell.Open(u); }, () => _runner.UrlOf(S) != null);
             OpenLog = new Command(() => Shell.OpenInEditor(_runner.LogFileOf(S)));
             OpenFolder = new Command(() => Shell.Open(_runner.Project.ServiceDir(S.Config)));
@@ -100,10 +101,11 @@ namespace mk.dev.runner.desktop.ViewModels
         private string _peak = "";
         public string PeakText { get => _peak; private set => Set(ref _peak, value); }
 
-        public long WorkingSet => S.Metrics.WorkingSet;
 
         public void Refresh()
         {
+            if (State != S.State)
+                CommandManager.InvalidateRequerySuggested();
             State = S.State;
             IsBusy = S.IsBusy;
             IsActive = S.HasProcess || S.IsBusy;
@@ -111,6 +113,7 @@ namespace mk.dev.runner.desktop.ViewModels
             if (_enabled != en) { _enabled = en; Raise(nameof(Enabled)); Raise(nameof(EnabledText)); }
             (StateText, StateBrush) = S.State switch
             {
+                ServiceState.Running when S.NoReadyLine => ("Running? (no ready line)", Palette.Brush(Palette.Warn)),
                 ServiceState.Running => ("Running", Palette.Brush(Palette.Good)),
                 ServiceState.Starting => ("Starting…", Palette.Brush(Palette.Info)),
                 ServiceState.Building => ("Building…", Palette.Brush(Palette.Building)),
@@ -137,9 +140,11 @@ namespace mk.dev.runner.desktop.ViewModels
             }
             else
             {
-                MemoryText = "—";
+                MemoryText = "";
                 CpuText = "";
-                DetailText = S.State == ServiceState.Disabled ? "Disabled on this machine: Start all skips it" : TypeText + " · " + S.Config.Dir;
+                DetailText = S.State == ServiceState.Disabled ? "Disabled on this machine: Start all skips it"
+                    : S.State is ServiceState.Crashed or ServiceState.Failed && S.LastProblem != null ? S.LastProblem
+                    : TypeText + " · " + S.Config.Dir;
                 ProcessTip = "Not running";
             }
             BuildSparkline();
@@ -155,15 +160,15 @@ namespace mk.dev.runner.desktop.ViewModels
             var h = S.MemoryHistory();
             const double W = 120, H = 28;
             if (h.Length < 2) { if (Sparkline.Count > 0) Sparkline = []; PeakText = ""; return; }
-            long max = Math.Max(h.Max(), 1);
-            long min = h.Min();
-            double range = Math.Max(max - min, max * 0.1);
-            double baseLine = Math.Max(0, max - range);
+            var max = Math.Max(h.Max(), 1);
+            var min = h.Min();
+            var range = Math.Max(max - min, max * 0.1);
+            var baseLine = Math.Max(0, max - range);
             var pts = new PointCollection(h.Length + 2);
             for (int i = 0; i < h.Length; i++)
             {
-                double x = W * i / (h.Length - 1);
-                double y = H - (h[i] - baseLine) / range * (H - 2) - 1;
+                var x = W * i / (h.Length - 1);
+                var y = H - (h[i] - baseLine) / range * (H - 2) - 1;
                 pts.Add(new Point(x, Math.Clamp(y, 0, H)));
             }
             pts.Freeze();

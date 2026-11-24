@@ -1,4 +1,5 @@
 using System.Windows;
+using mk.dev.runner.core;
 using mk.dev.runner.desktop.ViewModels;
 using Velopack;
 
@@ -7,8 +8,11 @@ namespace mk.dev.runner.desktop
     public partial class App : Application
     {
         private const string Instance = "mk.dev.runner.desktop";
-        private static readonly string MutexName = Instance;
-        private static readonly string ShowEventName = Instance + ".show";
+
+        public static bool IsDev { get; private set; }
+        public static string AppName => IsDev ? "Dev Runner DEV" : "Dev Runner";
+        private static string MutexName => IsDev ? Instance + ".dev" : Instance;
+        private static string ShowEventName => MutexName + ".show";
 
         private static bool _restartedAfterUpdate;
 
@@ -19,9 +23,34 @@ namespace mk.dev.runner.desktop
                 .OnBeforeUninstallFastCallback(_ => { try { StartupRegistration.Apply(false); } catch { } })
                 .OnRestarted(_ => _restartedAfterUpdate = true)
                 .Run();
+            IsDev = !Updates.Updater.Installed();
+            if (IsDev)
+                UseDevSettings();
             var app = new App();
             app.InitializeComponent();
             app.Run();
+        }
+
+        private static void UseDevSettings()
+        {
+            AppPaths.SettingsName = AppPaths.FolderName + ".dev";
+            if (File.Exists(AppSettings.FilePath))
+                return;
+            var dir = new DirectoryInfo(AppContext.BaseDirectory);
+            while (dir != null && !File.Exists(Path.Combine(dir.FullName, "sample", ".dev.json")))
+                dir = dir.Parent;
+            if (dir == null)
+                return;
+            try
+            {
+                var settings = new AppSettings();
+                settings.Add(Path.Combine(dir.FullName, "sample"), "Sample");
+                settings.Save();
+            }
+            catch (Exception e)
+            {
+                MessageBox.Show($"Couldn't add the sample project: {e.Message}", AppName, MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
         }
 
         private Mutex? _single;
@@ -30,10 +59,12 @@ namespace mk.dev.runner.desktop
         private MainWindow? _window;
         private Tray? _tray;
         private bool _exiting;
+        private bool _toldRunning;
 
         protected override void OnStartup(StartupEventArgs e)
         {
             base.OnStartup(e);
+            DarkTitleBar.ForAllWindows();
 
             _single = new Mutex(true, MutexName, out var first);
             if (!first)
@@ -63,8 +94,18 @@ namespace mk.dev.runner.desktop
             {
                 if (_exiting)
                     return;
-                if (_vm.Settings.CloseToTray) { ce.Cancel = true; HideWindow(); TellStillRunning(); }
-                else { ce.Cancel = true; ExitApp(); }
+                ce.Cancel = true;
+                if (_vm.Settings.CloseToTray)
+                {
+                    HideWindow();
+                    TellStillRunning();
+                    return;
+                }
+                var running = _vm.Projects.Sum(p => p.Services.Count(s => s.IsActive));
+                if (running > 0 && MessageBox.Show(_window, $"Closing stops {running} running service{(running == 1 ? "" : "s")}. Close anyway?", AppName,
+                        MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes)
+                    return;
+                ExitApp();
             };
             _window.StateChanged += (_, _) =>
             {
@@ -74,13 +115,13 @@ namespace mk.dev.runner.desktop
 
             _tray = new Tray(_vm, ShowWindow, ExitApp);
 
-            bool fromStartup = e.Args.Any(a => a.Equals("--tray", StringComparison.OrdinalIgnoreCase));
+            var fromStartup = e.Args.Any(a => a.Equals("--tray", StringComparison.OrdinalIgnoreCase));
             if (fromStartup && _vm.Settings.StartMinimized)
                 _vm.WindowVisible = false;
             else
                 ShowWindow();
 
-            if (!_restartedAfterUpdate)
+            if (!_restartedAfterUpdate && !IsDev)
                 _vm.AutoStartProjects();
             _vm.Updates.Start();
         }
@@ -109,9 +150,12 @@ namespace mk.dev.runner.desktop
         {
             if (_vm == null || _tray == null)
                 return;
-            int running = _vm.Projects.Sum(p => p.Services.Count(s => s.IsActive));
+            var running = _vm.Projects.Sum(p => p.Services.Count(s => s.IsActive));
             if (running > 0)
             {
+                if (_toldRunning)
+                    return;
+                _toldRunning = true;
                 _tray.Tip("Dev Runner is still running",
                     $"{running} service{(running == 1 ? " keeps" : "s keep")} running. To stop everything, right-click the tray icon and choose Exit.");
                 return;

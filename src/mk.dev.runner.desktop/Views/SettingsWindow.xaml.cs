@@ -19,7 +19,12 @@ namespace mk.dev.runner.desktop.Views
             Notifications.IsChecked = s.Notifications;
             CheckForUpdates.IsChecked = s.CheckForUpdates;
             DevChannel.IsChecked = vm.Updates.WantsDev;
-            Where.Text = $"Saved in {AppSettings.FilePath}";
+            StartMinimized.IsEnabled = s.StartWithWindows;
+            foreach (var box in new[] { StartWithWindows, StartMinimized, CloseToTray, Notifications, CheckForUpdates, DevChannel })
+            {
+                box.Checked += Changed;
+                box.Unchecked += Changed;
+            }
 
             var u = vm.Updates;
             Version.Text = $"Version {u.CurrentVersion}" + (u.IsInstalled ? "" : " (not installed)");
@@ -37,30 +42,40 @@ namespace mk.dev.runner.desktop.Views
 
         private async void CheckNow_Click(object sender, RoutedEventArgs e)
         {
-            ApplyUpdateChoices();
             await _vm.Updates.CheckAsync(manual: true);
         }
 
-        private void ApplyUpdateChoices()
+        private void Changed(object sender, RoutedEventArgs e)
         {
             var s = _vm.Settings;
-            var channel = DevChannel.IsChecked == true ? "dev" : "stable";
-            if (channel != (_vm.Updates.WantsDev ? "dev" : "stable")) { s.UpdateChannel = channel; _vm.Updates.ChannelChanged(); }
-            s.CheckForUpdates = CheckForUpdates.IsChecked == true;
-        }
-
-        private void Save_Click(object sender, RoutedEventArgs e)
-        {
-            var s = _vm.Settings;
-            s.StartWithWindows = StartWithWindows.IsChecked == true;
+            if (sender == StartWithWindows)
+            {
+                try { StartupRegistration.Apply(StartWithWindows.IsChecked == true); }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(this, ex.Message, "Couldn't change Start with Windows");
+                    StartWithWindows.IsChecked = s.StartWithWindows;
+                    return;
+                }
+                s.StartWithWindows = StartWithWindows.IsChecked == true;
+                StartMinimized.IsEnabled = s.StartWithWindows;
+            }
             s.StartMinimized = StartMinimized.IsChecked == true;
             s.CloseToTray = CloseToTray.IsChecked == true;
             s.Notifications = Notifications.IsChecked == true;
-            ApplyUpdateChoices();
-            try { StartupRegistration.Apply(s.StartWithWindows); }
-            catch (Exception ex) { MessageBox.Show(this, ex.Message, "Couldn't change Start with Windows"); }
+            s.CheckForUpdates = CheckForUpdates.IsChecked == true;
+            var channel = DevChannel.IsChecked == true ? "dev" : "stable";
+            if (channel != (_vm.Updates.WantsDev ? "dev" : "stable"))
+            {
+                s.UpdateChannel = channel;
+                _vm.Updates.ChannelChanged();
+            }
             _vm.SaveSettings();
-            Close();
+        }
+
+        private void OpenFolder_Click(object sender, RoutedEventArgs e)
+        {
+            Shell.Open(AppSettings.Dir);
         }
     }
 }

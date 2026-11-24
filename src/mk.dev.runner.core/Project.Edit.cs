@@ -39,37 +39,40 @@ namespace mk.dev.runner.core
 
         public ProjectDefinition ReadDefinition()
         {
-            var raw = Json.ReadObject(ConfigPath, missingIsEmpty: false);
-            var g = raw["globals"] as JsonObject ?? new JsonObject();
-            var def = new ProjectDefinition
+            lock (_gate)
             {
-                DotnetMode = Json.String(g["dotnetMode"]) ?? "watch",
-                Solution = Json.String(g["solution"]),
-                AutoRetry = Json.Bool(g["autoRetry"]) ?? false,
-                MaxRetries = Json.Int(g["maxRetries"]) ?? 5,
-                AutoRebuild = Json.Bool(g["autoRebuild"]) ?? true,
-            };
-            foreach (var s in (raw["services"] as JsonArray)?.OfType<JsonObject>() ?? [])
-            {
-                var key = Json.String(s["key"]) ?? "";
-                def.Services.Add(new ServiceDefinition
+                var raw = Json.ReadObject(ConfigPath, missingIsEmpty: false);
+                var g = raw["globals"] as JsonObject ?? new JsonObject();
+                var def = new ProjectDefinition
                 {
-                    OriginalKey = key,
-                    Key = key,
-                    Name = Json.String(s["name"]) ?? key,
-                    Dir = Json.String(s["dir"]) ?? ".",
-                    Type = (Json.String(s["type"]) ?? "command").ToLowerInvariant(),
-                    Color = Json.String(s["color"]),
-                    Port = Json.Int(s["defaultPort"]),
-                    Enabled = Json.Bool(s["enabled"]) ?? true,
-                    ReadyPattern = Json.String(s["readyPattern"]),
-                    Cmd = Json.String(s["cmd"]),
-                    Args = (s["args"] as JsonArray) is { } a ? JoinArgs(a.Select(Json.String).OfType<string>()) : null,
-                    Script = Json.String(s["script"]),
-                    Url = Json.String(s["url"]),
-                });
+                    DotnetMode = (Json.String(g["dotnetMode"]) ?? "watch").Trim().ToLowerInvariant(),
+                    Solution = Json.String(g["solution"]),
+                    AutoRetry = Json.Bool(g["autoRetry"]) ?? false,
+                    MaxRetries = Json.Int(g["maxRetries"]) ?? 5,
+                    AutoRebuild = Json.Bool(g["autoRebuild"]) ?? true,
+                };
+                foreach (var s in (raw["services"] as JsonArray)?.OfType<JsonObject>() ?? [])
+                {
+                    var key = Json.String(s["key"]) ?? "";
+                    def.Services.Add(new ServiceDefinition
+                    {
+                        OriginalKey = key,
+                        Key = key,
+                        Name = Json.String(s["name"]) ?? key,
+                        Dir = Json.String(s["dir"]) ?? ".",
+                        Type = (Json.String(s["type"]) ?? "command").ToLowerInvariant(),
+                        Color = Json.String(s["color"]),
+                        Port = Json.Int(s["defaultPort"]),
+                        Enabled = Json.Bool(s["enabled"]) ?? true,
+                        ReadyPattern = Json.String(s["readyPattern"]),
+                        Cmd = Json.String(s["cmd"]),
+                        Args = (s["args"] as JsonArray) is { } a ? JoinArgs(a.Select(Json.String).OfType<string>()) : null,
+                        Script = Json.String(s["script"]),
+                        Url = Json.String(s["url"]),
+                    });
+                }
+                return def;
             }
-            return def;
         }
 
         public static List<string> Validate(ProjectDefinition def)
@@ -97,53 +100,56 @@ namespace mk.dev.runner.core
 
         public void SaveDefinition(ProjectDefinition def)
         {
-            var problems = Validate(def);
-            if (problems.Count > 0)
-                throw new InvalidOperationException(string.Join("\n", problems));
-
-            var raw = Json.ReadObject(ConfigPath, missingIsEmpty: false);
-            var g = Json.Obj(raw, "globals");
-            g["dotnetMode"] = def.DotnetMode;
-            Set(g, "solution", def.Solution);
-            g["autoRetry"] = def.AutoRetry;
-            if (def.AutoRetry || g["maxRetries"] != null)
-                g["maxRetries"] = def.MaxRetries;
-            if (!def.AutoRebuild || g["autoRebuild"] != null)
-                g["autoRebuild"] = def.AutoRebuild;
-
-            var old = (raw["services"] as JsonArray)?.OfType<JsonObject>().ToList() ?? [];
-            var services = new JsonArray();
-            foreach (var s in def.Services)
+            lock (_gate)
             {
-                var node = s.OriginalKey == null ? null
-                    : old.FirstOrDefault(o => string.Equals(Json.String(o["key"]), s.OriginalKey, StringComparison.OrdinalIgnoreCase));
-                var o = node != null ? (JsonObject)node.DeepClone() : new JsonObject();
-                o["key"] = s.Key.Trim();
-                o["name"] = string.IsNullOrWhiteSpace(s.Name) ? s.Key.Trim() : s.Name.Trim();
-                o["dir"] = s.Dir.Trim();
-                o["type"] = s.Type;
-                Set(o, "color", s.Color);
-                if (s.Port is { } port)
-                    o["defaultPort"] = port;
-                else o.Remove("defaultPort");
-                o["enabled"] = s.Enabled;
-                Set(o, "readyPattern", s.ReadyPattern);
-                Set(o, "url", s.Url);
-                Set(o, "cmd", s.Type == "command" ? s.Cmd : null);
-                Set(o, "script", s.Type == "npm" ? s.Script : null);
-                var args = SplitArgs(s.Args);
-                if (args.Count > 0)
-                    o["args"] = new JsonArray(args.Select(a => (JsonNode?)JsonValue.Create(a)).ToArray());
-                else
-                    o.Remove("args");
-                services.Add(o);
+                var problems = Validate(def);
+                if (problems.Count > 0)
+                    throw new InvalidOperationException(string.Join("\n", problems));
 
-                if (s.OriginalKey != null && !s.OriginalKey.Equals(s.Key.Trim(), StringComparison.OrdinalIgnoreCase))
-                    RenameLocalService(s.OriginalKey, s.Key.Trim());
+                var raw = Json.ReadObject(ConfigPath, missingIsEmpty: false);
+                var g = Json.Obj(raw, "globals");
+                g["dotnetMode"] = def.DotnetMode;
+                Set(g, "solution", def.Solution);
+                g["autoRetry"] = def.AutoRetry;
+                if (def.AutoRetry || g["maxRetries"] != null)
+                    g["maxRetries"] = def.MaxRetries;
+                if (!def.AutoRebuild || g["autoRebuild"] != null)
+                    g["autoRebuild"] = def.AutoRebuild;
+
+                var old = (raw["services"] as JsonArray)?.OfType<JsonObject>().ToList() ?? [];
+                var services = new JsonArray();
+                foreach (var s in def.Services)
+                {
+                    var node = s.OriginalKey == null ? null
+                        : old.FirstOrDefault(o => string.Equals(Json.String(o["key"]), s.OriginalKey, StringComparison.OrdinalIgnoreCase));
+                    var o = node != null ? (JsonObject)node.DeepClone() : new JsonObject();
+                    o["key"] = s.Key.Trim();
+                    o["name"] = string.IsNullOrWhiteSpace(s.Name) ? s.Key.Trim() : s.Name.Trim();
+                    o["dir"] = s.Dir.Trim();
+                    o["type"] = s.Type;
+                    Set(o, "color", s.Color);
+                    if (s.Port is { } port)
+                        o["defaultPort"] = port;
+                    else o.Remove("defaultPort");
+                    o["enabled"] = s.Enabled;
+                    Set(o, "readyPattern", s.ReadyPattern);
+                    Set(o, "url", s.Url);
+                    Set(o, "cmd", s.Type == "command" ? s.Cmd : null);
+                    Set(o, "script", s.Type == "npm" ? s.Script : null);
+                    var args = SplitArgs(s.Args);
+                    if (args.Count > 0)
+                        o["args"] = new JsonArray(args.Select(a => (JsonNode?)JsonValue.Create(a)).ToArray());
+                    else
+                        o.Remove("args");
+                    services.Add(o);
+
+                    if (s.OriginalKey != null && !s.OriginalKey.Equals(s.Key.Trim(), StringComparison.OrdinalIgnoreCase))
+                        RenameLocalService(s.OriginalKey, s.Key.Trim());
+                }
+                raw["services"] = services;
+                Json.WriteObject(ConfigPath, raw);
+                Reload();
             }
-            raw["services"] = services;
-            Json.WriteObject(ConfigPath, raw);
-            Reload();
         }
 
         private void RenameLocalService(string from, string to)
@@ -171,13 +177,31 @@ namespace mk.dev.runner.core
             if (string.IsNullOrWhiteSpace(line))
                 return list;
             var cur = new StringBuilder();
-            bool quoted = false, any = false;
-            foreach (var c in line)
+            var quoted = false;
+            var any = false;
+            for (var i = 0; i < line.Length; i++)
             {
-                if (c == '"') { quoted = !quoted; any = true; continue; }
+                var c = line[i];
+                if (c == '\\' && i + 1 < line.Length && line[i + 1] == '"')
+                {
+                    cur.Append('"');
+                    i++;
+                    continue;
+                }
+                if (c == '"')
+                {
+                    quoted = !quoted;
+                    any = true;
+                    continue;
+                }
                 if (char.IsWhiteSpace(c) && !quoted)
                 {
-                    if (cur.Length > 0 || any) { list.Add(cur.ToString()); cur.Clear(); any = false; }
+                    if (cur.Length > 0 || any)
+                    {
+                        list.Add(cur.ToString());
+                        cur.Clear();
+                        any = false;
+                    }
                     continue;
                 }
                 cur.Append(c);
@@ -189,7 +213,13 @@ namespace mk.dev.runner.core
 
         public static string JoinArgs(IEnumerable<string> args)
         {
-            return string.Join(' ', args.Select(a => a.Length == 0 || a.Any(char.IsWhiteSpace) ? $"\"{a}\"" : a));
+            return string.Join(' ', args.Select(QuoteArg));
+        }
+
+        private static string QuoteArg(string a)
+        {
+            var escaped = a.Replace("\"", "\\\"");
+            return a.Length == 0 || a.Any(char.IsWhiteSpace) || a.Contains('"') ? $"\"{escaped}\"" : escaped;
         }
     }
 }

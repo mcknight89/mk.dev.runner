@@ -8,7 +8,9 @@ namespace mk.dev.runner.core
     {
         public const string FolderName = "mk.dev.runner";
 
-        public static string SettingsDir => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), FolderName);
+        public static string SettingsName { get; set; } = FolderName;
+
+        public static string SettingsDir => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), SettingsName);
 
         public static string LogsRoot => Path.Combine(Path.GetTempPath(), FolderName, "logs");
 

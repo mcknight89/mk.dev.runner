@@ -35,6 +35,26 @@ namespace mk.dev.runner.core.Config
                    ?? throw new InvalidDataException($"{Path.GetFileName(path)} is not a JSON object.");
         }
 
+        public static bool HasComments(string path)
+        {
+            try
+            {
+                var text = File.ReadAllText(path);
+                if (!text.Contains("//") && !text.Contains("/*"))
+                    return false;
+                using var _ = JsonDocument.Parse(text, new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Disallow, AllowTrailingCommas = true });
+                return false;
+            }
+            catch (JsonException)
+            {
+                return true;
+            }
+            catch (IOException)
+            {
+                return false;
+            }
+        }
+
         public static void WriteObject(string path, JsonObject obj)
         {
             WriteText(path, obj.ToJsonString(Options) + Environment.NewLine);

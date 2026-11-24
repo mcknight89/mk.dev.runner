@@ -37,7 +37,6 @@ namespace mk.dev.runner.core
                     _services[i].State = ServiceState.Failed;
                     _services[i].Logs.Add($"\x1b[91m[build] {msg}\x1b[0m");
                 }
-                RaiseChanged();
                 return;
             }
 
@@ -56,7 +55,6 @@ namespace mk.dev.runner.core
                 s.State = ServiceState.Building;
             }
             BuildLog.Add($"\x1b[2m[build] stopped {affected.Count} service(s) to unlock DLLs, building{(restore ? "" : " --no-restore")}…\x1b[0m");
-            RaiseChanged();
 
             var args = $"build \"{Path.GetFileName(sln)}\" -c Debug --verbosity minimal{(restore ? "" : " --no-restore")}";
             var psi = new ProcessStartInfo("cmd.exe")
@@ -82,7 +80,6 @@ namespace mk.dev.runner.core
                 _building = false;
                 BuildState = BuildState.Failed;
                 BuildLog.Add($"\x1b[31m[build] could not start dotnet: {e.Message}\x1b[0m");
-                RaiseChanged();
                 return;
             }
             var bp = new ServiceProcess(p, job, job.TryAssign(p));
@@ -101,7 +98,7 @@ namespace mk.dev.runner.core
             p.ErrorDataReceived += (_, e) => OnData(e.Data);
             p.Exited += (_, _) => Task.Run(() =>
             {
-                int code = -1;
+                var code = -1;
                 try { p.WaitForExit(); code = p.ExitCode; } catch { }
                 _q.Post(() => OnBuildExit(bp, code, affected));
             });
@@ -128,7 +125,7 @@ namespace mk.dev.runner.core
             {
                 BuildState = BuildState.Failed;
                 var errs = LastBuildErrors.Distinct().ToList();
-                int n = errs.Count;
+                var n = errs.Count;
                 var shown = n > 0 ? errs.Take(12).ToList() : ["(no compiler errors parsed from output — see full build log)"];
                 BuildLog.Add($"\x1b[41m\x1b[97m [build] FAILED — exit {code}, {n} error{(n == 1 ? "" : "s")} \x1b[0m");
                 foreach (var e in shown) BuildLog.Add($"\x1b[31m  • {e}\x1b[0m");
@@ -145,29 +142,10 @@ namespace mk.dev.runner.core
                     if (n > 12)
                         s.Logs.Add($"\x1b[91m  … and {n - 12} more\x1b[0m");
                 }
-                Notice?.Invoke(new RunnerNotice(Project.Name, null, $"build failed — {n} error{(n == 1 ? "" : "s")}", true));
+                Notice?.Invoke(new RunnerNotice(Project.Name, null, $"build failed — {n} error{(n == 1 ? "" : "s")}"));
             }
-            RaiseChanged();
             if (_pendingAffected.Count > 0)
                 RunBuildCycle();
-        }
-
-        private void FlushBuildServers()
-        {
-            try
-            {
-                using var p = Process.Start(new ProcessStartInfo("dotnet", "build-server shutdown")
-                {
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    WorkingDirectory = Project.RootDir,
-                });
-                if (p != null && !p.WaitForExit(20000))
-                    p.Kill(true);
-            }
-            catch { }
         }
 
         private void EnsureDepGraph(bool force = false)
@@ -234,10 +212,15 @@ namespace mk.dev.runner.core
                     NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName,
                     InternalBufferSize = 64 * 1024,
                 };
-                FileSystemEventHandler h = (_, e) => _q.Post(() => OnSourceChanged(e.FullPath));
-                _srcWatcher.Changed += h;
-                _srcWatcher.Created += h;
-                _srcWatcher.Renamed += (_, e) => _q.Post(() => OnSourceChanged(e.FullPath));
+                _srcWatcher.Changed += (_, e) => PostSourceChange(e.FullPath, false);
+                _srcWatcher.Created += (_, e) => PostSourceChange(e.FullPath, false);
+                _srcWatcher.Deleted += (_, e) => PostSourceChange(e.FullPath, true);
+                _srcWatcher.Renamed += (_, e) =>
+                {
+                    PostSourceChange(e.OldFullPath, true);
+                    PostSourceChange(e.FullPath, true);
+                };
+                _srcWatcher.Error += (_, e) => _q.Post(() => OnWatcherError(e.GetException()));
                 _srcWatcher.EnableRaisingEvents = true;
             }
             catch (Exception e) { BuildLog.Add($"\x1b[31m[watch] failed to watch {root}: {e.Message}\x1b[0m"); }
@@ -248,19 +231,44 @@ namespace mk.dev.runner.core
             _srcDebounce?.Dispose(); _srcDebounce = null;
             _srcWatcher?.Dispose(); _srcWatcher = null;
             _changed.Clear();
+            _rebuildAll = false;
         }
 
-        private void OnSourceChanged(string abs)
+        private void PostSourceChange(string abs, bool always)
         {
-            if (!SessionActive || WatchIgnore.IsMatch(abs) || !WatchExt.IsMatch(abs))
+            if (WatchIgnore.IsMatch(abs) || !WatchExt.IsMatch(abs))
                 return;
-            DateTime mtime;
-            try { mtime = File.GetLastWriteTime(abs); } catch { mtime = DateTime.Now; }
-            var isNew = !_seenMtimes.TryGetValue(abs, out var prev) ? mtime > _watchStartedAt : mtime != prev;
-            _seenMtimes[abs] = mtime;
-            if (!isNew)
+            _q.Post(() => OnSourceChanged(abs, always));
+        }
+
+        private void OnSourceChanged(string abs, bool always)
+        {
+            if (!SessionActive)
                 return;
+            if (!always)
+            {
+                DateTime mtime;
+                try { mtime = File.GetLastWriteTime(abs); } catch { mtime = DateTime.Now; }
+                var isNew = !_seenMtimes.TryGetValue(abs, out var prev) ? mtime > _watchStartedAt : mtime != prev;
+                _seenMtimes[abs] = mtime;
+                if (!isNew)
+                    return;
+            }
             _changed.Add(abs);
+            DebounceFlush();
+        }
+
+        private void OnWatcherError(Exception e)
+        {
+            if (!SessionActive)
+                return;
+            BuildLog.Add($"\x1b[33m[watch] missed some file changes ({e.Message}), rebuilding everything\x1b[0m");
+            _rebuildAll = true;
+            DebounceFlush();
+        }
+
+        private void DebounceFlush()
+        {
             _srcDebounce?.Dispose();
             _srcDebounce = _q.After(TimeSpan.FromSeconds(Math.Max(0.2, Project.Config.Globals.RebuildDebounceSec)), FlushChanges);
         }
@@ -269,10 +277,14 @@ namespace mk.dev.runner.core
         {
             var paths = _changed.ToList();
             _changed.Clear();
-            if (paths.Count == 0 || !SessionActive)
+            var all = _rebuildAll;
+            _rebuildAll = false;
+            if ((paths.Count == 0 && !all) || !SessionActive)
                 return;
             var affected = new HashSet<int>();
-            bool restore = false;
+            var restore = all;
+            if (all)
+                affected.UnionWith(_services.Where(x => x.Config.IsDotnet && IsEnabled(x) && !x.Stopped).Select(x => x.Index));
             foreach (var p in paths)
             {
                 if (Regex.IsMatch(p, @"\.(csproj|props|targets)$", RegexOptions.IgnoreCase))
@@ -283,9 +295,8 @@ namespace mk.dev.runner.core
                 return;
             foreach (var i in affected) _services[i].State = ServiceState.Building;
             var files = paths.Select(Path.GetFileName).ToList();
-            var shown = string.Join(", ", files.Take(6)) + (files.Count > 6 ? $" +{files.Count - 6} more" : "");
+            var shown = files.Count == 0 ? "missed changes" : string.Join(", ", files.Take(6)) + (files.Count > 6 ? $" +{files.Count - 6} more" : "");
             BuildLog.Add($"\x1b[36m[watch] changed: {shown} → rebuild: {string.Join(", ", affected.Select(i => _services[i].Name))}\x1b[0m");
-            RaiseChanged();
             TriggerBuild(affected, restore);
         }
     }

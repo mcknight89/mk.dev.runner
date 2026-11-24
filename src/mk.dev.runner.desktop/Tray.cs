@@ -24,14 +24,17 @@ namespace mk.dev.runner.desktop
             _running = Icons.Make(Color.FromArgb(0x4a, 0xde, 0x80));
             _problem = Icons.Make(Color.FromArgb(0xf8, 0x71, 0x71));
 
-            _icon = new NotifyIcon { Icon = _idle, Text = "Dev Runner", Visible = true, ContextMenuStrip = new ContextMenuStrip() };
-            _icon.ContextMenuStrip.Opening += (_, e) => { BuildMenu(); e.Cancel = false; };
+            _icon = new NotifyIcon { Icon = _idle, Text = App.AppName, Visible = true, ContextMenuStrip = new ContextMenuStrip() };
+            _icon.ContextMenuStrip.Opening += (_, e) => BuildMenu();
             _icon.MouseClick += (_, e) => { if (e.Button == MouseButtons.Left) _show(); };
-            _icon.BalloonTipClicked += (_, _) => _show();
+            _icon.BalloonTipClicked += (_, _) =>
+            {
+                _show();
+                vm.ShowLastNotice();
+            };
 
             vm.SummaryChanged += OnSummary;
-            vm.NoticeRaised += (title, text, isError) =>
-                _icon.ShowBalloonTip(5000, title, text, isError ? ToolTipIcon.Error : ToolTipIcon.Info);
+            vm.NoticeRaised += (title, text) => _icon.ShowBalloonTip(5000, title, text, ToolTipIcon.Error);
         }
 
         private void OnSummary(string text, bool running, bool problem)
@@ -91,88 +94,6 @@ namespace mk.dev.runner.desktop
             _icon.Visible = false;
             _icon.Dispose();
             _idle.Dispose(); _running.Dispose(); _problem.Dispose();
-        }
-    }
-
-    internal static class Icons
-    {
-        [System.Runtime.InteropServices.DllImport("user32.dll")]
-        private static extern bool DestroyIcon(IntPtr h);
-
-        public static Icon Make(Color status, int size = 32)
-        {
-            using var bmp = new Bitmap(size, size);
-            using (var g = Graphics.FromImage(bmp))
-            {
-                g.SmoothingMode = SmoothingMode.AntiAlias;
-                g.Clear(Color.Transparent);
-                float s = size;
-                using var tile = RoundRect(new RectangleF(1, 1, s - 2, s - 2), s * 0.22f);
-                using (var bg = new SolidBrush(Color.FromArgb(0x1e, 0x3a, 0x5f))) g.FillPath(bg, tile);
-                using (var edge = new Pen(Color.FromArgb(0x60, 0xa5, 0xfa), s / 16)) g.DrawPath(edge, tile);
-                var tri = new[] { new PointF(s * 0.32f, s * 0.24f), new PointF(s * 0.32f, s * 0.76f), new PointF(s * 0.74f, s * 0.5f) };
-                using (var fg = new SolidBrush(Color.FromArgb(0xe4, 0xe4, 0xe7))) g.FillPolygon(fg, tri);
-                float d = s * 0.36f;
-                using (var ring = new SolidBrush(Color.FromArgb(0x18, 0x18, 0x1b))) g.FillEllipse(ring, s - d - 0.5f, s - d - 0.5f, d, d);
-                using (var dot = new SolidBrush(status)) g.FillEllipse(dot, s - d + s * 0.05f, s - d + s * 0.05f, d - s * 0.12f, d - s * 0.12f);
-            }
-            var h = bmp.GetHicon();
-            var icon = (Icon)Icon.FromHandle(h).Clone();
-            DestroyIcon(h);
-            return icon;
-        }
-
-        private static GraphicsPath RoundRect(RectangleF r, float rad)
-        {
-            var p = new GraphicsPath();
-            float d = rad * 2;
-            p.AddArc(r.X, r.Y, d, d, 180, 90);
-            p.AddArc(r.Right - d, r.Y, d, d, 270, 90);
-            p.AddArc(r.Right - d, r.Bottom - d, d, d, 0, 90);
-            p.AddArc(r.X, r.Bottom - d, d, d, 90, 90);
-            p.CloseFigure();
-            return p;
-        }
-
-        public static System.Windows.Media.ImageSource ToImageSource(Icon icon)
-        {
-            return System.Windows.Interop.Imaging.CreateBitmapSourceFromHIcon(icon.Handle, System.Windows.Int32Rect.Empty,
-                System.Windows.Media.Imaging.BitmapSizeOptions.FromEmptyOptions());
-        }
-    }
-
-    internal static class StartupRegistration
-    {
-        private const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
-        private const string ValueName = "Dev Runner";
-        private const string OldValueName = "mk.dev.runner";
-
-        public static void Apply(bool enabled)
-        {
-            using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(RunKey, writable: true);
-            if (key == null)
-                return;
-            if (key.GetValue(OldValueName) != null)
-                key.DeleteValue(OldValueName);
-            if (enabled)
-                key.SetValue(ValueName, Command);
-            else if (key.GetValue(ValueName) != null)
-                key.DeleteValue(ValueName);
-        }
-
-        private static string Command => $"\"{Environment.ProcessPath}\" --tray";
-
-        public static void KeepPathCurrent(bool enabled)
-        {
-            if (!enabled)
-                return;
-            try
-            {
-                using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(RunKey, writable: true);
-                if (key != null && key.GetValue(ValueName) as string != Command)
-                    Apply(true);
-            }
-            catch { }
         }
     }
 }

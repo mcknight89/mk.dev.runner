@@ -21,10 +21,13 @@ namespace mk.dev.runner.desktop.Views
             var row = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
             for (int i = 0; i < buttons.Length; i++)
             {
-                int n = i;
+                var n = i;
                 var b = new Button { Content = buttons[i], Margin = new Thickness(8, 0, 0, 0), Padding = new Thickness(14, 5, 14, 5) };
                 if (i == 0)
+                {
                     b.Style = (Style)Application.Current.FindResource("Primary");
+                    b.IsDefault = true;
+                }
                 b.Click += (_, _) => { _choice = n; Close(); };
                 row.Children.Add(b);
             }

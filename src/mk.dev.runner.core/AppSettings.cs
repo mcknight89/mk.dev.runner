@@ -133,7 +133,10 @@ namespace mk.dev.runner.core
                 dirs.AddRange(Directory.GetDirectories(dir)
                     .Where(d => !Path.GetFileName(d).StartsWith('.') && Path.GetFileName(d) is not ("node_modules" or "bin" or "obj")));
             }
-            catch { }
+            catch (Exception e)
+            {
+                errors.Add($"{dir}: couldn't list its folders ({e.Message})");
+            }
             var files = dirs.SelectMany(d =>
             {
                 var found = Project.FindConfigs(d);
@@ -163,41 +166,5 @@ namespace mk.dev.runner.core
         {
             try { return Path.GetFullPath(p); } catch { return null; }
         }
-    }
-
-    public sealed class ProjectEntry
-    {
-        public string? Name { get; set; }
-
-        public string? Folder { get; set; }
-
-        public string? Config { get; set; }
-
-        public bool AutoStart { get; set; }
-
-        [System.Text.Json.Serialization.JsonIgnore]
-        public string ConfigFile => Folder != null ? Path.Combine(Folder, string.IsNullOrWhiteSpace(Config) ? Project.FolderConfigName : Config!) : Config ?? "";
-
-        [System.Text.Json.Serialization.JsonIgnore]
-        public bool IsLegacy => Folder == null;
-
-        [System.Text.Json.Serialization.JsonIgnore]
-        public string DisplayName => !string.IsNullOrWhiteSpace(Name) ? Name! : Folder != null ? Path.GetFileName(Folder.TrimEnd('\\', '/')) : Project.NameFromFile(Config ?? "");
-    }
-
-    public sealed record LoadedProject(ProjectEntry Entry, Project? Project, string? Error);
-
-    public sealed class ConfigNotFoundException : Exception
-    {
-        public ConfigNotFoundException(string folder, List<string> candidates) : base(candidates.Count == 0
-            ? $"No config file in {folder}. Create one ({Project.FolderConfigName}), or pick the file if it has another name."
-            : $"More than one config in {folder}: {string.Join(", ", candidates.Select(Path.GetFileName))}. Pick the one to use.")
-        {
-            Folder = folder;
-            Candidates = candidates;
-        }
-
-        public string Folder { get; }
-        public List<string> Candidates { get; }
     }
 }

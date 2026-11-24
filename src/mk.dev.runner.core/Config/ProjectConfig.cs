@@ -32,7 +32,6 @@ namespace mk.dev.runner.core.Config
 
         public List<string>? RestartOnChange { get; set; }
 
-        [JsonExtensionData] public Dictionary<string, JsonElement>? Extra { get; set; }
     }
 
     public sealed class ServiceConfig

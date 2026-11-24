@@ -46,6 +46,7 @@ namespace mk.dev.runner.core
 
         private JsonObject _cfg = new();
         private JsonObject _local = new();
+        private readonly object _gate = new();
 
         public string? LocalProblem { get; private set; }
 
@@ -118,31 +119,36 @@ namespace mk.dev.runner.core
 
         public void Reload()
         {
-            _cfg = Json.ReadObject(ConfigPath, missingIsEmpty: false);
-            LocalProblem = null;
-            try { _local = Json.ReadObject(LocalPath, missingIsEmpty: true); }
-            catch (Exception e)
+            lock (_gate)
             {
-                _local = new JsonObject();
-                LocalProblem = $"{Path.GetFileName(LocalPath)} can't be read ({e.Message}). This machine's settings are ignored until it's fixed, and nothing will be saved over it.";
+                _cfg = Json.ReadObject(ConfigPath, missingIsEmpty: false);
+                LocalProblem = null;
+                try { _local = Json.ReadObject(LocalPath, missingIsEmpty: true); }
+                catch (Exception e)
+                {
+                    _local = new JsonObject();
+                    LocalProblem = $"{Path.GetFileName(LocalPath)} can't be read ({e.Message}). This machine's settings are ignored until it's fixed, and nothing will be saved over it.";
+                }
+
+                var merged = (JsonObject)_cfg.DeepClone();
+                if (_local["globals"] is JsonObject lg)
+                    merged["globals"] = merged["globals"] is JsonObject cg ? Json.DeepMerge(cg, lg) : lg.DeepClone();
+
+                Config = merged.Deserialize<ProjectConfig>(Json.Options) ?? new ProjectConfig();
+                Config.Globals ??= new GlobalsConfig();
+                Config.Globals.DotnetMode = (Config.Globals.DotnetMode ?? "watch").Trim().ToLowerInvariant();
+                Config.Services ??= [];
+                foreach (var s in Config.Services)
+                {
+                    s.Type = (s.Type ?? "command").Trim().ToLowerInvariant();
+                    if (string.IsNullOrWhiteSpace(s.Key))
+                        s.Key = s.Name ?? $"svc{Config.Services.IndexOf(s) + 1}";
+                    s.Dir = string.IsNullOrWhiteSpace(s.Dir) ? "." : s.Dir;
+                }
+
+                Name = _displayName ?? (!string.IsNullOrWhiteSpace(Config.Name) ? Config.Name! : IsLegacy ? NameFromFile(ConfigPath) : Path.GetFileName(ConfigDir));
+                RootDir = string.IsNullOrWhiteSpace(Config.Root) ? ConfigDir : Path.GetFullPath(Path.Combine(ConfigDir, Config.Root!));
             }
-
-            var merged = (JsonObject)_cfg.DeepClone();
-            if (_local["globals"] is JsonObject lg)
-                merged["globals"] = merged["globals"] is JsonObject cg ? Json.DeepMerge(cg, lg) : lg.DeepClone();
-
-            Config = merged.Deserialize<ProjectConfig>(Json.Options) ?? new ProjectConfig();
-            Config.Globals ??= new GlobalsConfig();
-            Config.Services ??= [];
-            foreach (var s in Config.Services)
-            {
-                if (string.IsNullOrWhiteSpace(s.Key))
-                    s.Key = s.Name ?? $"svc{Config.Services.IndexOf(s) + 1}";
-                s.Dir = string.IsNullOrWhiteSpace(s.Dir) ? "." : s.Dir;
-            }
-
-            Name = _displayName ?? (!string.IsNullOrWhiteSpace(Config.Name) ? Config.Name! : IsLegacy ? NameFromFile(ConfigPath) : Path.GetFileName(ConfigDir));
-            RootDir = string.IsNullOrWhiteSpace(Config.Root) ? ConfigDir : Path.GetFullPath(Path.Combine(ConfigDir, Config.Root!));
         }
 
         public ServiceConfig? Service(string key)
@@ -168,12 +174,18 @@ namespace mk.dev.runner.core
 
         public bool IsEnabled(ServiceConfig svc)
         {
-            return Json.Bool(LocalService(svc.Key)?["enabled"]) ?? svc.Enabled ?? true;
+            lock (_gate)
+            {
+                return Json.Bool(LocalService(svc.Key)?["enabled"]) ?? svc.Enabled ?? true;
+            }
         }
 
         public int? PortOf(ServiceConfig svc)
         {
-            return Json.Int(LocalService(svc.Key)?["port"]) ?? svc.DefaultPort;
+            lock (_gate)
+            {
+                return Json.Int(LocalService(svc.Key)?["port"]) ?? svc.DefaultPort;
+            }
         }
 
         public string? UrlOf(ServiceConfig svc)
@@ -186,66 +198,105 @@ namespace mk.dev.runner.core
 
         public void SetEnabled(ServiceConfig svc, bool enabled)
         {
-            var o = Json.Obj(Json.Obj(_local, "services"), svc.Key);
-            if (enabled == (svc.Enabled ?? true))
-                o.Remove("enabled");
-            else o["enabled"] = enabled;
-            SaveLocal();
+            lock (_gate)
+            {
+                var o = Json.Obj(Json.Obj(_local, "services"), svc.Key);
+                if (enabled == (svc.Enabled ?? true))
+                    o.Remove("enabled");
+                else o["enabled"] = enabled;
+                SaveLocal();
+            }
         }
 
-        public void SetPort(ServiceConfig svc, int? port)
-        {
-            var o = Json.Obj(Json.Obj(_local, "services"), svc.Key);
-            if (port == null || port == svc.DefaultPort)
-                o.Remove("port");
-            else o["port"] = port;
-            SaveLocal();
-        }
 
 
         public Dictionary<string, string> GetEnv(string? serviceKey, EnvScope scope)
         {
-            if (scope == EnvScope.Shared)
+            lock (_gate)
             {
+                if (scope == EnvScope.Shared)
+                {
+                    if (serviceKey == null)
+                        return Json.ToStringMap(_cfg["env"]);
+                    return Json.ToStringMap(ConfigServiceNode(serviceKey)?["env"]);
+                }
                 if (serviceKey == null)
-                    return Json.ToStringMap(_cfg["env"]);
-                return Json.ToStringMap(ConfigServiceNode(serviceKey)?["env"]);
+                    return Json.ToStringMap(_local["env"]);
+                return Json.ToStringMap(LocalService(serviceKey)?["env"]);
             }
-            if (serviceKey == null)
-                return Json.ToStringMap(_local["env"]);
-            return Json.ToStringMap(LocalService(serviceKey)?["env"]);
         }
 
         public void SetEnv(string? serviceKey, EnvScope scope, IEnumerable<KeyValuePair<string, string>> values)
         {
-            var map = Json.FromStringMap(values);
-            if (scope == EnvScope.Shared)
+            lock (_gate)
             {
-                var target = serviceKey == null ? _cfg : ConfigServiceNode(serviceKey)
-                             ?? throw new KeyNotFoundException($"No service '{serviceKey}' in {Path.GetFileName(ConfigPath)}.");
+                var map = Json.FromStringMap(values);
+                if (scope == EnvScope.Shared)
+                {
+                    var target = serviceKey == null ? _cfg : ConfigServiceNode(serviceKey)
+                                 ?? throw new KeyNotFoundException($"No service '{serviceKey}' in {Path.GetFileName(ConfigPath)}.");
+                    if (map.Count == 0)
+                        target.Remove("env");
+                    else target["env"] = map;
+                    Json.WriteObject(ConfigPath, _cfg);
+                    Reload();
+                    return;
+                }
+                var t = serviceKey == null ? _local : Json.Obj(Json.Obj(_local, "services"), serviceKey);
                 if (map.Count == 0)
-                    target.Remove("env");
-                else target["env"] = map;
-                Json.WriteObject(ConfigPath, _cfg);
-                Reload();
-                return;
+                    t.Remove("env");
+                else t["env"] = map;
+                SaveLocal();
             }
-            var t = serviceKey == null ? _local : Json.Obj(Json.Obj(_local, "services"), serviceKey);
-            if (map.Count == 0)
-                t.Remove("env");
-            else t["env"] = map;
-            SaveLocal();
+        }
+
+        public bool ConfigHasComments => Json.HasComments(ConfigPath);
+
+        public List<string> EnvFiles()
+        {
+            var dirs = new List<string> { RootDir };
+            dirs.AddRange(Config.Services.Select(ServiceDir));
+            var found = new List<string> { Path.Combine(RootDir, ".env") };
+            foreach (var dir in dirs.Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                try { found.AddRange(Directory.GetFiles(dir, ".env*").Order(StringComparer.OrdinalIgnoreCase)); }
+                catch (IOException) { }
+                catch (UnauthorizedAccessException) { }
+            }
+            return found.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        }
+
+        public List<string> EnvOrder()
+        {
+            lock (_gate)
+            {
+                return (_local["envOrder"] as JsonArray)?.Select(Json.String).OfType<string>().ToList() ?? [];
+            }
+        }
+
+        public void SetEnvOrder(List<string> order)
+        {
+            lock (_gate)
+            {
+                if (order.SequenceEqual(EnvOrder()))
+                    return;
+                _local["envOrder"] = new JsonArray(order.Select(x => (JsonNode?)JsonValue.Create(x)).ToArray());
+                SaveLocal();
+            }
         }
 
         public Dictionary<string, string> EffectiveEnv(ServiceConfig svc)
         {
-            var env = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            void Add(Dictionary<string, string> m) { foreach (var (k, v) in m) env[k] = v; }
-            Add(GetEnv(null, EnvScope.Shared));
-            Add(GetEnv(null, EnvScope.Local));
-            Add(GetEnv(svc.Key, EnvScope.Shared));
-            Add(GetEnv(svc.Key, EnvScope.Local));
-            return env;
+            lock (_gate)
+            {
+                var env = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                void Add(Dictionary<string, string> m) { foreach (var (k, v) in m) env[k] = v; }
+                Add(GetEnv(null, EnvScope.Shared));
+                Add(GetEnv(null, EnvScope.Local));
+                Add(GetEnv(svc.Key, EnvScope.Shared));
+                Add(GetEnv(svc.Key, EnvScope.Local));
+                return env;
+            }
         }
 
         private JsonObject? ConfigServiceNode(string key)

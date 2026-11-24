@@ -50,6 +50,7 @@ namespace mk.dev.runner.desktop.Views
 
     public partial class ProjectEditorWindow : Window
     {
+        private readonly UnsavedChanges _unsaved;
         private readonly ProjectViewModel _vm;
         private readonly Project _project;
         private readonly ProjectDefinition _def;
@@ -60,13 +61,14 @@ namespace mk.dev.runner.desktop.Views
         public ProjectEditorWindow(ProjectViewModel vm)
         {
             InitializeComponent();
+            _unsaved = new UnsavedChanges(this);
             _vm = vm;
             _project = vm.Runner!.Project;
             _def = _project.ReadDefinition();
 
             Title = $"Edit project — {vm.Name}";
             Heading.Text = $"Edit {vm.Name}";
-            FilePath.Text = $"Saved to {_project.ConfigPath}";
+            FilePath.Text = $"Saves to {_project.ConfigPath}" + (_project.ConfigHasComments ? ". Saving removes the comments in it." : "");
             ProjectName.Text = vm.Name;
             DotnetMode.ItemsSource = Project.DotnetModes;
             DotnetMode.SelectedItem = Project.DotnetModes.Contains(_def.DotnetMode) ? _def.DotnetMode : "watch";
@@ -138,8 +140,8 @@ namespace mk.dev.runner.desktop.Views
 
         private void Add_Click(object sender, RoutedEventArgs e)
         {
-            int n = _rows.Count + 1;
-            string key = "service";
+            var n = _rows.Count + 1;
+            var key = "service";
             while (_rows.Any(r => r.Key.Equals(key, StringComparison.OrdinalIgnoreCase))) key = $"service{n++}";
             var used = _rows.Select(r => r.Color).ToHashSet();
             var row = Hook(new ServiceRow(new ServiceDefinition
@@ -160,7 +162,7 @@ namespace mk.dev.runner.desktop.Views
                 return;
             if (MessageBox.Show(this, $"Remove {r.Title} from this project?", "Remove service",
                     MessageBoxButton.OKCancel, MessageBoxImage.Question) != MessageBoxResult.OK) return;
-            int i = _rows.IndexOf(r);
+            var i = _rows.IndexOf(r);
             _rows.Remove(r);
             List.SelectedIndex = Math.Min(i, _rows.Count - 1);
         }
@@ -247,7 +249,11 @@ namespace mk.dev.runner.desktop.Views
             _def.Services = _rows.Select(r => r.D).ToList();
 
             var problems = Project.Validate(_def);
-            if (problems.Count > 0) { Status.Text = string.Join("  ", problems); return; }
+            if (problems.Count > 0)
+            {
+                Status.Text = string.Join(Environment.NewLine, problems);
+                return;
+            }
 
             try
             {
@@ -260,6 +266,7 @@ namespace mk.dev.runner.desktop.Views
                 return;
             }
             Saved = true;
+            _unsaved.Saved = true;
             Close();
         }
     }

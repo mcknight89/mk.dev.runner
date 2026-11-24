@@ -37,9 +37,12 @@ namespace mk.dev.runner.core
         private readonly HashSet<string> _changed = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, DateTime> _seenMtimes = new(StringComparer.OrdinalIgnoreCase);
         private DateTime _watchStartedAt;
+        private bool _rebuildAll;
 
         private readonly List<FileSystemWatcher> _envWatchers = [];
         private Timer? _envDebounce;
+        private DateTime? _envChangedAt;
+        private int _metricsQueued;
 
         public ProjectRunner(Project project, string appName)
         {
@@ -61,9 +64,7 @@ namespace mk.dev.runner.core
         public bool IsManaged => Project.IsManaged;
         public IReadOnlyList<string> LastBuildErrors { get { lock (_buildErrors) return [.. _buildErrors]; } }
 
-        public event Action? Changed;
         public event Action? ServicesChanged;
-        public event Action? MetricsUpdated;
         public event Action<RunnerNotice>? Notice;
 
         public bool IsEnabled(ServiceRunner s)
@@ -94,11 +95,11 @@ namespace mk.dev.runner.core
         public void Start()
         {
             _q.Invoke(() =>
-        {
-            if (!SessionActive)
-                BeginSession();
-            StartAllCore();
-        });
+            {
+                if (!SessionActive)
+                    BeginSession();
+                StartAllCore();
+            });
         }
 
         public void StopAll()
@@ -109,51 +110,51 @@ namespace mk.dev.runner.core
         public void StartService(int idx)
         {
             _q.Invoke(() =>
-        {
-            if (!SessionActive)
-                BeginSession();
-            var s = _services[idx];
-            if (!IsEnabled(s)) { ToggleCore(s); return; }
-            if (s.HasProcess)
-                return;
-            s.Stopped = false;
-            s.Fails = 0;
-            if (IsManaged && s.Config.IsDotnet) { EnsureDepGraph(); s.State = ServiceState.Building; TriggerBuild([idx], false); }
-            else
-                StartCore(s);
-        });
+            {
+                if (!SessionActive)
+                    BeginSession();
+                var s = _services[idx];
+                if (!IsEnabled(s)) { ToggleCore(s); return; }
+                if (s.HasProcess)
+                    return;
+                s.Stopped = false;
+                s.Fails = 0;
+                if (IsManaged && s.Config.IsDotnet) { EnsureDepGraph(); s.State = ServiceState.Building; TriggerBuild([idx], false); }
+                else
+                    StartCore(s);
+            });
         }
 
         public void StopService(int idx)
         {
-            _q.Post(() => { StopCore(_services[idx]); RaiseChanged(); });
+            _q.Post(() => StopCore(_services[idx]));
         }
 
         public void RestartService(int idx)
         {
             _q.Post(() =>
-        {
-            if (!SessionActive) { BeginSessionSafe(); if (!SessionActive) return; }
-            RestartCore(_services[idx]);
-        });
+            {
+                if (!SessionActive) { BeginSessionSafe(); if (!SessionActive) return; }
+                RestartCore(_services[idx]);
+            });
         }
 
         public void RestartAll()
         {
             _q.Post(() =>
-        {
-            if (!SessionActive)
-                return;
-            var managed = new HashSet<int>();
-            foreach (var s in _services.Where(s => IsEnabled(s) && !s.Stopped))
             {
-                if (IsManaged && s.Config.IsDotnet) { managed.Add(s.Index); s.State = ServiceState.Building; s.Fails = 0; }
-                else
-                    RestartCore(s);
-            }
-            if (managed.Count > 0)
-                TriggerBuild(managed, false);
-        });
+                if (!SessionActive)
+                    return;
+                var managed = new HashSet<int>();
+                foreach (var s in _services.Where(s => IsEnabled(s) && !s.Stopped))
+                {
+                    if (IsManaged && s.Config.IsDotnet) { managed.Add(s.Index); s.State = ServiceState.Building; s.Fails = 0; }
+                    else
+                        RestartCore(s);
+                }
+                if (managed.Count > 0)
+                    TriggerBuild(managed, false);
+            });
         }
 
         public void ToggleService(int idx)
@@ -161,53 +162,43 @@ namespace mk.dev.runner.core
             _q.Post(() => ToggleCore(_services[idx]));
         }
 
-        public void SetPort(int idx, int? port)
-        {
-            _q.Post(() =>
-        {
-            Project.SetPort(_services[idx].Config, port);
-            RaiseChanged();
-        });
-        }
 
         public void CleanRebuild()
         {
             _q.Post(() =>
-        {
-            if (!IsManaged)
-                return;
-            if (!SessionActive) { BeginSessionSafe(); if (!SessionActive) return; }
-            BuildLog.Add("\x1b[36m[build] clean rebuild — flushing build servers…\x1b[0m");
-            FlushBuildServers();
-            EnsureDepGraph();
-            var idxs = _services.Where(s => s.Config.IsDotnet && IsEnabled(s)).Select(s => s.Index).ToHashSet();
-            foreach (var i in idxs) { _services[i].State = ServiceState.Building; _services[i].Stopped = false; }
-            RaiseChanged();
-            TriggerBuild(idxs, true);
-        });
+            {
+                if (!IsManaged)
+                    return;
+                if (!SessionActive) { BeginSessionSafe(); if (!SessionActive) return; }
+                BuildLog.Add("\x1b[36m[build] clean rebuild…\x1b[0m");
+                EnsureDepGraph();
+                var idxs = _services.Where(s => s.Config.IsDotnet && IsEnabled(s)).Select(s => s.Index).ToHashSet();
+                foreach (var i in idxs) { _services[i].State = ServiceState.Building; _services[i].Stopped = false; }
+                TriggerBuild(idxs, true);
+            });
         }
 
         public void ApplyEnvChanges()
         {
             _q.Post(() =>
-        {
-            Project.Reload();
-            foreach (var s in _services)
             {
-                if (!s.HasProcess || s.StartedEnv == null)
-                    continue;
-                var now = UserEnv(s);
-                if (SameMap(now, s.StartedEnv))
-                    continue;
-                s.Logs.Add("\x1b[33m[runner] environment changed — restarting…\x1b[0m");
-                RestartCore(s);
-            }
-        });
+                Project.Reload();
+                foreach (var s in _services)
+                {
+                    if (!s.HasProcess || s.StartedEnv == null)
+                        continue;
+                    var now = UserEnv(s);
+                    if (SameMap(now, s.StartedEnv))
+                        continue;
+                    s.Logs.Add("\x1b[33m[runner] environment changed — restarting…\x1b[0m");
+                    RestartCore(s);
+                }
+            });
         }
 
         public bool ReloadProject()
         {
-            bool ok = false;
+            var ok = false;
             _q.Invoke(() =>
             {
                 if (SessionActive)
@@ -225,7 +216,7 @@ namespace mk.dev.runner.core
         private void BeginSessionSafe()
         {
             try { BeginSession(); }
-            catch (Exception e) { Notice?.Invoke(new RunnerNotice(Project.Name, null, e.Message, true)); }
+            catch (Exception e) { Notice?.Invoke(new RunnerNotice(Project.Name, null, e.Message)); }
         }
 
         private void BeginSession()
@@ -245,7 +236,7 @@ namespace mk.dev.runner.core
                     s.Stopped = false;
                     s.State = IsEnabled(s) ? ServiceState.Stopped : ServiceState.Disabled;
                     if (Project.LocalProblem != null)
-                        s.Logs.Add($"[91m[runner] {Project.LocalProblem}[0m");
+                        s.Logs.Add($"\x1b[91m[runner] {Project.LocalProblem}\x1b[0m");
                 }
                 if (IsManaged)
                     BuildLog.OpenFile(BuildLogFile, $"build ({Project.Name}): session {stamp}");
@@ -253,13 +244,11 @@ namespace mk.dev.runner.core
 
                 SessionActive = true;
                 StartEnvWatchers();
-                _metricsTimer = new Timer(_ => _q.Post(SampleMetrics), null, 1000, 2000);
+                _metricsTimer = new Timer(_ => QueueMetrics(), null, 1000, 2000);
 
                 if (IsManaged)
                 {
                     EnsureDepGraph(force: true);
-                    BuildLog.Add("\x1b[2m[build] flushing stale build servers…\x1b[0m");
-                    FlushBuildServers();
                     if (Project.Config.Globals.AutoRebuild)
                     {
                         StartSourceWatcher();
@@ -268,7 +257,6 @@ namespace mk.dev.runner.core
                     else
                         BuildLog.Add("\x1b[90m[watch] auto-rebuild OFF — restart a service to rebuild it\x1b[0m");
                 }
-                RaiseChanged();
             }
             catch
             {
@@ -306,7 +294,6 @@ namespace mk.dev.runner.core
                 BuildLog.Add($"\x1b[2m[build] building {Path.GetFileName(Project.SolutionPath ?? "solution")}…\x1b[0m");
                 TriggerBuild(dotnet, true);
             }
-            RaiseChanged();
         }
 
         private void EndSession()
@@ -347,13 +334,11 @@ namespace mk.dev.runner.core
             _lock?.Dispose();
             _lock = null;
             SessionActive = false;
-            RaiseChanged();
-            MetricsUpdated?.Invoke();
         }
 
         private void LoadServices()
         {
-            int max = Project.Config.Globals.LogBufferLines;
+            var max = Project.Config.Globals.LogBufferLines;
             var old = _services;
             _services = Project.Config.Services.Select((c, i) =>
             {
@@ -406,11 +391,6 @@ namespace mk.dev.runner.core
             var error = sp.Kill(reason, wait);
             if (error != null)
                 s.Logs.Add($"\x1b[91m[runner] couldn't stop {s.Name}: {error}\x1b[0m");
-        }
-
-        private void RaiseChanged()
-        {
-            Changed?.Invoke();
         }
 
         public void Dispose()

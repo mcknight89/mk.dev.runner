@@ -10,6 +10,8 @@ namespace mk.dev.runner.desktop
         {
             InitializeComponent();
             DataContext = vm;
+            Title = App.AppName;
+            AppTitle.Text = App.AppName;
             var icon = Icons.Make(System.Drawing.Color.FromArgb(0x60, 0xa5, 0xfa), 48);
             Icon = Icons.ToImageSource(icon);
         }
@@ -31,9 +33,7 @@ namespace mk.dev.runner.desktop
 
         private void CopyLog_Click(object sender, RoutedEventArgs e)
         {
-            var text = Log.AllText();
-            if (text.Length > 0)
-                Clipboard.SetText(text);
+            Log.CopyAll();
         }
 
         private void Bottom_Click(object sender, RoutedEventArgs e)

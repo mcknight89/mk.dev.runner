@@ -4,7 +4,7 @@
         Title="Settings" Width="460" SizeToContent="Height" ResizeMode="NoResize"
         Style="{StaticResource DarkWindow}" WindowStartupLocation="CenterOwner" ShowInTaskbar="False">
     <StackPanel Margin="20">
-        <TextBlock Text="Settings" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,16"/>
+        <TextBlock Text="Changes apply straight away." Foreground="{StaticResource Faint}" Margin="0,0,0,16"/>
 
         <CheckBox x:Name="StartWithWindows" Style="{StaticResource Switch}" Content="Start with Windows"/>
         <TextBlock Text="Runs in the notification area when you sign in. Projects marked Auto-start start too."
@@ -33,11 +33,9 @@
             <TextBlock x:Name="UpdateStatus" Foreground="{StaticResource Muted}" Margin="12,0,0,0" VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="300"/>
         </StackPanel>
 
-        <TextBlock x:Name="Where" Foreground="{StaticResource Faint}" FontSize="11" Margin="0,20,0,0" TextWrapping="Wrap"/>
-
-        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">
-            <Button Content="Cancel" IsCancel="True"/>
-            <Button Content="Save" Style="{StaticResource Primary}" Click="Save_Click" Margin="8,0,0,0" Padding="18,5" IsDefault="True"/>
-        </StackPanel>
+        <Grid Margin="0,22,0,0">
+            <Button Content="Open settings folder" Click="OpenFolder_Click" HorizontalAlignment="Left" Padding="12,4"/>
+            <Button Content="Close" IsCancel="True" IsDefault="True" HorizontalAlignment="Right" Padding="18,5"/>
+        </Grid>
     </StackPanel>
 </Window>

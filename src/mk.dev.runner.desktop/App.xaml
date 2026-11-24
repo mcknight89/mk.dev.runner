@@ -12,6 +12,7 @@
             <c:BoolToVisibility x:Key="NotVis" Invert="True"/>
             <c:HexToBrush x:Key="HexBrush"/>
             <c:ColorNameToBrush x:Key="ColorName"/>
+            <c:CardColumns x:Key="CardColumns"/>
         </ResourceDictionary>
     </Application.Resources>
 </Application>

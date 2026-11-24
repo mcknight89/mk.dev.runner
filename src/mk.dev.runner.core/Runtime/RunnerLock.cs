@@ -42,7 +42,7 @@ namespace mk.dev.runner.core.Runtime
             }
             catch (IOException)
             {
-                string who = "another runner";
+                var who = "another runner";
                 try
                 {
                     using var r = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
